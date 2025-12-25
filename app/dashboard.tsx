@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { User, Ship, LogOut, Plus } from 'lucide-react-native';
+import { User, Ship, LogOut, Plus, Package } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { shipApi } from '@/api/ships';
@@ -157,6 +157,13 @@ export default function DashboardScreen() {
                       <Text style={styles.statValue}>{ship.cargo_capacity}</Text>
                     </View>
                   </View>
+                  <TouchableOpacity
+                    style={styles.inventoryButton}
+                    onPress={() => router.push({ pathname: '/ship-inventory' as any, params: { shipId: ship.id } })}
+                  >
+                    <Package size={16} color={Colors.primary} />
+                    <Text style={styles.inventoryButtonText}>View Inventory</Text>
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -340,5 +347,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textDim,
     textAlign: 'center',
+  },
+  inventoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  inventoryButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.primary,
   },
 });

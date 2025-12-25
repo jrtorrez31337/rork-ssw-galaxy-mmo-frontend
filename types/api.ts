@@ -53,6 +53,7 @@ export interface Ship {
   shield_points: number;
   shield_max: number;
   cargo_capacity: number;
+  current_cargo_used?: number;
   location_sector: string;
   created_at: string;
   stat_allocation?: ShipStats;
