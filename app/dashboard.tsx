@@ -1,20 +1,27 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { User, Ship, LogOut, Plus, Package, Navigation } from 'lucide-react-native';
+import { User, Ship, LogOut, Plus, Package, Navigation, Shield } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { shipApi } from '@/api/ships';
+import { reputationApi } from '@/api/reputation';
 import ShipControlPanel from '@/components/movement/ShipControlPanel';
+import ReputationList from '@/components/reputation/ReputationList';
+import ReputationHistory from '@/components/reputation/ReputationHistory';
+import { useReputationEvents } from '@/hooks/useReputationEvents';
+import { getFactionName } from '@/components/reputation/utils';
 import Colors from '@/constants/colors';
-import type { Ship as ShipType } from '@/types/api';
+import type { Ship as ShipType, ReputationTierChangeEvent } from '@/types/api';
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { user, profileId, logout } = useAuth();
   const [selectedShip, setSelectedShip] = useState<ShipType | null>(null);
   const [controlsModalVisible, setControlsModalVisible] = useState(false);
+  const [selectedFactionId, setSelectedFactionId] = useState<string | null>(null);
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
 
   const { data: characters, isLoading: loadingCharacters } = useQuery({
     queryKey: ['characters', profileId],
@@ -28,10 +35,46 @@ export default function DashboardScreen() {
     enabled: !!profileId,
   });
 
+  const { data: reputations, isLoading: loadingReputations } = useQuery({
+    queryKey: ['reputations', profileId],
+    queryFn: () => reputationApi.getAllReputations(profileId!),
+    enabled: !!profileId,
+  });
+
+  const { data: reputationHistory, isLoading: loadingHistory } = useQuery({
+    queryKey: ['reputationHistory', profileId, selectedFactionId],
+    queryFn: () =>
+      reputationApi.getReputationHistory(profileId!, {
+        faction_id: selectedFactionId || undefined,
+        limit: 50,
+      }),
+    enabled: !!profileId && !!selectedFactionId && historyModalVisible,
+  });
+
   const handleLogout = async () => {
     await logout();
     router.replace('/login');
   };
+
+  const handleFactionPress = (factionId: string) => {
+    setSelectedFactionId(factionId);
+    setHistoryModalVisible(true);
+  };
+
+  const handleReputationTierChange = (event: ReputationTierChangeEvent) => {
+    const factionName = getFactionName(event.faction_id);
+    Alert.alert(
+      'Reputation Changed',
+      `Your reputation with ${factionName} changed from ${event.old_tier} to ${event.new_tier}!`,
+      [{ text: 'OK' }]
+    );
+  };
+
+  // Subscribe to real-time reputation events
+  // Note: This requires SSE implementation (see useReputationEvents.ts)
+  useReputationEvents(profileId || '', {
+    onTierChange: handleReputationTierChange,
+  });
 
   return (
     <View style={styles.container}>
@@ -191,6 +234,32 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
+
+        {/* Reputation Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Shield size={24} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>Faction Reputation</Text>
+            </View>
+          </View>
+
+          {loadingReputations ? (
+            <Text style={styles.loadingText}>Loading reputation...</Text>
+          ) : reputations && reputations.reputations.length > 0 ? (
+            <ReputationList
+              reputations={reputations.reputations}
+              onFactionPress={handleFactionPress}
+            />
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No reputation data</Text>
+              <Text style={styles.emptySubtext}>
+                Your faction standings will appear here
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       {/* Ship Controls Modal */}
@@ -215,6 +284,34 @@ export default function DashboardScreen() {
                 </View>
                 <ShipControlPanel ship={selectedShip} />
               </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Reputation History Modal */}
+      {selectedFactionId && (
+        <Modal
+          visible={historyModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setHistoryModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Reputation History</Text>
+                <TouchableOpacity
+                  onPress={() => setHistoryModalVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <ReputationHistory
+                events={reputationHistory?.events || []}
+                isLoading={loadingHistory}
+              />
             </View>
           </View>
         </Modal>

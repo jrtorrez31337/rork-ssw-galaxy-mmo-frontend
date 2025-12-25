@@ -83,3 +83,86 @@ export interface ApiResponse<T> {
 export interface ApiErrorResponse {
   error: ApiError;
 }
+
+// Reputation System Types
+export type ReputationTier =
+  | 'Reviled'
+  | 'Hostile'
+  | 'Unfriendly'
+  | 'Neutral'
+  | 'Friendly'
+  | 'Honored'
+  | 'Exalted';
+
+export type ReputationEffect =
+  | 'kill_on_sight'
+  | 'no_access'
+  | 'attack_on_sight'
+  | 'higher_prices'
+  | 'discounts'
+  | 'special_missions'
+  | 'best_prices'
+  | 'exclusive_access';
+
+export type ReputationChangeReason =
+  | 'trade'
+  | 'mission_complete'
+  | 'combat_kill'
+  | 'combat_assist'
+  | 'defend_station'
+  | 'attack_station'
+  | 'betrayal'
+  | 'smuggling'
+  | 'piracy';
+
+export interface FactionReputation {
+  faction_id: string;
+  score: number;
+  tier: ReputationTier;
+  effects: ReputationEffect[];
+  updated_at: string;
+}
+
+export interface PlayerReputations {
+  player_id: string;
+  reputations: FactionReputation[];
+}
+
+export interface ReputationHistoryEvent {
+  id: string;
+  profile_id: string;
+  faction_id: string;
+  change_amount: number;
+  reason: ReputationChangeReason;
+  related_entity_id?: string;
+  previous_standing: number;
+  new_standing: number;
+  created_at: string;
+}
+
+export interface ReputationHistory {
+  player_id: string;
+  events: ReputationHistoryEvent[];
+  count: number;
+}
+
+export interface ReputationTierDefinition {
+  name: ReputationTier;
+  min_score: number;
+  max_score: number;
+  effects: ReputationEffect[];
+}
+
+export interface ReputationTiers {
+  tiers: ReputationTierDefinition[];
+}
+
+export interface ReputationTierChangeEvent {
+  player_id: string;
+  faction_id: string;
+  old_tier: ReputationTier;
+  new_tier: ReputationTier;
+  old_score: number;
+  new_score: number;
+  timestamp: number;
+}
