@@ -41,6 +41,12 @@ export interface ShipStats {
   sensors: number;
 }
 
+export interface Vector3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export type ShipType = 'scout' | 'fighter' | 'trader' | 'explorer';
 
 export interface Ship {
@@ -55,6 +61,12 @@ export interface Ship {
   cargo_capacity: number;
   current_cargo_used?: number;
   location_sector: string;
+  position: Vector3;
+  fuel_current: number;
+  fuel_capacity: number;
+  in_combat: boolean;
+  docked_at?: string;
+  last_jump_at?: string;
   created_at: string;
   stat_allocation?: ShipStats;
 }

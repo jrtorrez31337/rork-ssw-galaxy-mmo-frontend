@@ -1,15 +1,20 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { User, Ship, LogOut, Plus, Package } from 'lucide-react-native';
+import { User, Ship, LogOut, Plus, Package, Navigation } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { shipApi } from '@/api/ships';
+import ShipControlPanel from '@/components/movement/ShipControlPanel';
 import Colors from '@/constants/colors';
+import type { Ship as ShipType } from '@/types/api';
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { user, profileId, logout } = useAuth();
+  const [selectedShip, setSelectedShip] = useState<ShipType | null>(null);
+  const [controlsModalVisible, setControlsModalVisible] = useState(false);
 
   const { data: characters, isLoading: loadingCharacters } = useQuery({
     queryKey: ['characters', profileId],
@@ -157,13 +162,25 @@ export default function DashboardScreen() {
                       <Text style={styles.statValue}>{ship.cargo_capacity}</Text>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    style={styles.inventoryButton}
-                    onPress={() => router.push({ pathname: '/ship-inventory' as any, params: { shipId: ship.id } })}
-                  >
-                    <Package size={16} color={Colors.primary} />
-                    <Text style={styles.inventoryButtonText}>View Inventory</Text>
-                  </TouchableOpacity>
+                  <View style={styles.shipActions}>
+                    <TouchableOpacity
+                      style={styles.shipActionButton}
+                      onPress={() => {
+                        setSelectedShip(ship);
+                        setControlsModalVisible(true);
+                      }}
+                    >
+                      <Navigation size={16} color={Colors.primary} />
+                      <Text style={styles.shipActionButtonText}>Ship Controls</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.shipActionButton}
+                      onPress={() => router.push({ pathname: '/ship-inventory' as any, params: { shipId: ship.id } })}
+                    >
+                      <Package size={16} color={Colors.primary} />
+                      <Text style={styles.shipActionButtonText}>Inventory</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </View>
@@ -175,6 +192,33 @@ export default function DashboardScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Ship Controls Modal */}
+      {selectedShip && (
+        <Modal
+          visible={controlsModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setControlsModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{selectedShip.name || 'Unnamed Ship'}</Text>
+                  <TouchableOpacity
+                    onPress={() => setControlsModalVisible(false)}
+                    style={styles.closeButton}
+                  >
+                    <Text style={styles.closeButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <ShipControlPanel ship={selectedShip} />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -348,22 +392,65 @@ const styles = StyleSheet.create({
     color: Colors.textDim,
     textAlign: 'center',
   },
-  inventoryButton: {
+  shipActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  shipActionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.primary,
     borderRadius: 8,
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginTop: 12,
+    paddingHorizontal: 12,
   },
-  inventoryButtonText: {
-    fontSize: 14,
+  shipActionButtonText: {
+    fontSize: 13,
     fontWeight: '600' as const,
     color: Colors.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: Colors.background,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 600,
+    maxHeight: '85%',
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 24,
+    color: Colors.text,
   },
 });
