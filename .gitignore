@@ -42,3 +42,8 @@ yarn-error.*
 
 .env
 rork-eslint.config.js
+# Reference documentation
+update3/
+
+# Example configuration files
+constants/config.example.ts
