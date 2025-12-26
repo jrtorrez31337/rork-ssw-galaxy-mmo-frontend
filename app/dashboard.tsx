@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { User, Ship, LogOut, Plus, Package, Navigation, Shield, TrendingUp, Pickaxe, Radar } from 'lucide-react-native';
+import { User, Ship, LogOut, Plus, Package, Navigation, Shield, TrendingUp, Pickaxe, Radar, ScrollText } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { shipApi } from '@/api/ships';
@@ -11,8 +11,12 @@ import ShipControlPanel from '@/components/movement/ShipControlPanel';
 import ReputationList from '@/components/reputation/ReputationList';
 import ReputationHistory from '@/components/reputation/ReputationHistory';
 import CreditsDisplay from '@/components/credits/CreditsDisplay';
+import ActiveMissionTracker from '@/components/missions/ActiveMissionTracker';
+import MissionDetailModal from '@/components/missions/MissionDetailModal';
 import { useReputationEvents } from '@/hooks/useReputationEvents';
 import { useStationServices } from '@/hooks/useStationServices';
+import { useMissionEvents } from '@/hooks/useMissionEvents';
+import { useMissionStore } from '@/stores/missionStore';
 import { getFactionName } from '@/components/reputation/utils';
 import Colors from '@/constants/colors';
 import type { Ship as ShipType, ReputationTierChangeEvent } from '@/types/api';
@@ -25,6 +29,16 @@ export default function DashboardScreen() {
   const [controlsModalVisible, setControlsModalVisible] = useState(false);
   const [selectedFactionId, setSelectedFactionId] = useState<string | null>(null);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [missionDetailVisible, setMissionDetailVisible] = useState(false);
+
+  const {
+    activeMissions,
+    selectedMission,
+    fetchActive,
+    fetchAvailable,
+    setSelectedMission,
+    abandonMission,
+  } = useMissionStore();
 
   const { data: characters, isLoading: loadingCharacters } = useQuery({
     queryKey: ['characters', profileId],
@@ -96,6 +110,29 @@ export default function DashboardScreen() {
   useStationServices(profileId || '', {
     onCreditsChanged: handleCreditsChanged,
   });
+
+  // Subscribe to real-time mission events
+  useMissionEvents(profileId || '', {
+    onMissionCompleted: (event) => {
+      Alert.alert(
+        '🎉 Mission Completed!',
+        `You completed "${event.template_name}"!\n\nRewards:\n• ${event.credits_awarded} Credits\n• ${event.reputation_awarded} Reputation`,
+        [{ text: 'OK' }]
+      );
+      fetchActive();
+      fetchAvailable();
+    },
+  });
+
+  const handleMissionPress = (mission: any) => {
+    setSelectedMission(mission);
+    setMissionDetailVisible(true);
+  };
+
+  const handleAbandonMission = async (missionId: string) => {
+    await abandonMission(missionId);
+    setMissionDetailVisible(false);
+  };
 
   return (
     <View style={styles.container}>
@@ -310,6 +347,37 @@ export default function DashboardScreen() {
           )}
         </View>
 
+        {/* Missions Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <ScrollText size={24} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>Active Missions</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => router.push('/missions')}
+            >
+              <Text style={styles.addButtonText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {activeMissions.length > 0 ? (
+            <ActiveMissionTracker
+              missions={activeMissions}
+              onMissionPress={handleMissionPress}
+              compact
+            />
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No active missions</Text>
+              <Text style={styles.emptySubtext}>
+                Visit Mission Control to accept new missions
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Reputation Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -391,6 +459,17 @@ export default function DashboardScreen() {
           </View>
         </Modal>
       )}
+
+      {/* Mission Detail Modal */}
+      <MissionDetailModal
+        mission={selectedMission}
+        visible={missionDetailVisible}
+        onClose={() => {
+          setMissionDetailVisible(false);
+          setSelectedMission(null);
+        }}
+        onAbandon={handleAbandonMission}
+      />
     </View>
   );
 }

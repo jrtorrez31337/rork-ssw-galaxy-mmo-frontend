@@ -27,6 +27,7 @@ function RootLayoutNav() {
       <Stack.Screen name="ship-customize" />
       <Stack.Screen name="ship-inventory" />
       <Stack.Screen name="trading" />
+      <Stack.Screen name="missions" />
     </Stack>
   );
 }
