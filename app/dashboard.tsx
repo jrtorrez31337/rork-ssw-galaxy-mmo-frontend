@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { User, Ship, LogOut, Plus, Package, Navigation, Shield, TrendingUp } from 'lucide-react-native';
+import { User, Ship, LogOut, Plus, Package, Navigation, Shield, TrendingUp, Pickaxe } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { shipApi } from '@/api/ships';
@@ -264,6 +264,21 @@ export default function DashboardScreen() {
                       <TrendingUp size={16} color={ship.docked_at ? Colors.primary : Colors.textDim} />
                       <Text style={[styles.shipActionButtonText, !ship.docked_at && styles.shipActionButtonTextDisabled]}>
                         Trading {!ship.docked_at && '(Dock Required)'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.shipActionButton, ship.docked_at && styles.shipActionButtonDisabled]}
+                      onPress={() => {
+                        if (!ship.docked_at) {
+                          router.push({ pathname: '/mining' as any, params: { shipId: ship.id } });
+                        } else {
+                          Alert.alert('Cannot Mine', 'You must undock before mining', [{ text: 'OK' }]);
+                        }
+                      }}
+                    >
+                      <Pickaxe size={16} color={!ship.docked_at ? Colors.primary : Colors.textDim} />
+                      <Text style={[styles.shipActionButtonText, ship.docked_at && styles.shipActionButtonTextDisabled]}>
+                        Mining {ship.docked_at && '(Undock Required)'}
                       </Text>
                     </TouchableOpacity>
                   </View>
