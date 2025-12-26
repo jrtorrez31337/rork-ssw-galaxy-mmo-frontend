@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import EventSource from 'react-native-sse';
+import { storage } from '@/utils/storage';
 import {
   MovementEvent,
   ShipJumpedEvent,
@@ -28,56 +30,88 @@ export function useMovementEvents(playerId: string, onEvent: EventCallback) {
   useEffect(() => {
     if (!playerId) return;
 
-    // TODO: Replace with actual SSE library implementation
-    // Example with react-native-sse or EventSource polyfill:
-    /*
-    import EventSource from 'react-native-sse';
-
-    const eventSource = new EventSource(
-      `${API_BASE_URL}/events?channels=player.${playerId},game.movement.jump,game.movement.dock,game.movement.undock`,
-      {
-        headers: {
-          // Add auth token if required
-        },
+    const setupSSE = async () => {
+      const accessToken = await storage.getAccessToken();
+      if (!accessToken) {
+        console.log('[SSE] No access token available');
+        return;
       }
-    );
 
-    eventSource.addEventListener('SHIP_JUMPED', (event: any) => {
-      const data: ShipJumpedEvent = JSON.parse(event.data);
-      onEvent({ type: 'SHIP_JUMPED', data });
-    });
+      console.log(`[SSE] Connecting to Fanout service for movement events`);
+      console.log(`[SSE] URL: ${config.FANOUT_URL}/v1/stream/gameplay`);
 
-    eventSource.addEventListener('SHIP_DOCKED', (event: any) => {
-      const data: ShipDockedEvent = JSON.parse(event.data);
-      onEvent({ type: 'SHIP_DOCKED', data });
-    });
+      // Connect to Fanout service through Gateway (SSE stream)
+      const eventSource = new EventSource(`${config.FANOUT_URL}/v1/stream/gameplay`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
 
-    eventSource.addEventListener('SHIP_UNDOCKED', (event: any) => {
-      const data: ShipUndockedEvent = JSON.parse(event.data);
-      onEvent({ type: 'SHIP_UNDOCKED', data });
-    });
+      eventSource.addEventListener('open' as any, async () => {
+        console.log('[SSE] Connected to Fanout service (movement)');
 
-    eventSource.addEventListener('error', (error: any) => {
-      console.error('SSE connection error:', error);
-    });
+        // Subscribe to movement channels
+        // Note: Using direct Fanout access for subscribe due to Gateway routing complexity
+        try{
+          const subscribeResponse = await fetch(`http://192.168.122.76:8086/v1/stream/gameplay/subscribe`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              channels: [
+                `player.${playerId}`,
+                'game.movement',
+              ],
+            }),
+          });
 
-    eventSourceRef.current = eventSource;
+          if (subscribeResponse.ok) {
+            console.log('[SSE] Subscribed to movement channels');
+          } else {
+            console.error('[SSE] Subscription failed:', await subscribeResponse.text());
+          }
+        } catch (error) {
+          console.error('[SSE] Subscribe error:', error);
+        }
+      });
 
-    return () => {
-      eventSource.close();
+      // Use standard 'message' event for all SSE events
+      eventSource.addEventListener('message' as any, (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[SSE] Received movement event:', data.type, data);
+
+          // Handle different movement event types
+          switch (data.type) {
+            case 'ship_jumped':
+              onEvent({ type: 'SHIP_JUMPED', data: data.payload || data });
+              break;
+            case 'ship_docked':
+              onEvent({ type: 'SHIP_DOCKED', data: data.payload || data });
+              break;
+            case 'ship_undocked':
+              onEvent({ type: 'SHIP_UNDOCKED', data: data.payload || data });
+              break;
+          }
+        } catch (error) {
+          console.error('[SSE] Parse error:', error);
+        }
+      });
+
+      eventSource.addEventListener('error' as any, (error: any) => {
+        console.error('[SSE] Movement connection error:', error);
+      });
+
+      eventSourceRef.current = eventSource;
     };
-    */
 
-    // Placeholder logging for now
-    console.log(
-      `[useMovementEvents] Would subscribe to events for player: ${playerId}`
-    );
-    console.log(
-      `[useMovementEvents] SSE URL: ${config.API_BASE_URL}/events?channels=player.${playerId},game.movement.jump,game.movement.dock,game.movement.undock`
-    );
+    setupSSE();
 
     return () => {
       if (eventSourceRef.current) {
+        console.log('[SSE] Closing movement connection');
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }

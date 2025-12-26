@@ -2,8 +2,15 @@ const getApiBaseUrl = () => {
   return 'http://192.168.122.76:8080/v1';
 };
 
+const getFanoutUrl = () => {
+  // SSE connections go through Gateway (port 8080), which proxies to Fanout service (port 8086)
+  // Gateway handles authentication, rate limiting, and CORS for SSE streams
+  return 'http://192.168.122.76:8080';
+};
+
 export const config = {
   API_BASE_URL: getApiBaseUrl(),
+  FANOUT_URL: getFanoutUrl(),
 } as const;
 
 export const DEV_INSTRUCTIONS = `

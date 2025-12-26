@@ -2,11 +2,20 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import EventSource from 'react-native-sse';
 import { storage } from '@/utils/storage';
-import { ReputationTierChangeEvent } from '@/types/api';
+import {
+  FuelPurchasedEvent,
+  RepairCompletedEvent,
+  CreditsChangedEvent,
+} from '@/types/station-services';
 import { config } from '@/constants/config';
 
 /**
- * Hook to subscribe to real-time reputation tier change events via Server-Sent Events (SSE)
+ * Hook to subscribe to real-time station service events via Server-Sent Events (SSE)
+ *
+ * Events handled:
+ * - fuel_purchased: Ship refueled
+ * - repair_completed: Ship repaired
+ * - credits_changed: Credits balance updated
  *
  * Note: React Native doesn't have native EventSource support.
  * This implementation will need one of the following:
@@ -18,14 +27,16 @@ import { config } from '@/constants/config';
  * Install: npm install react-native-sse
  */
 
-export interface ReputationEventCallbacks {
-  onTierChange?: (event: ReputationTierChangeEvent) => void;
+export interface StationServiceEventCallbacks {
+  onFuelPurchased?: (event: FuelPurchasedEvent['payload']) => void;
+  onRepairCompleted?: (event: RepairCompletedEvent['payload']) => void;
+  onCreditsChanged?: (event: CreditsChangedEvent['payload']) => void;
   onError?: (error: any) => void;
 }
 
-export function useReputationEvents(
+export function useStationServices(
   playerId: string,
-  callbacks?: ReputationEventCallbacks
+  callbacks?: StationServiceEventCallbacks
 ) {
   const eventSourceRef = useRef<any>(null);
   const queryClient = useQueryClient();
@@ -40,7 +51,7 @@ export function useReputationEvents(
         return;
       }
 
-      console.log(`[SSE] Connecting to Fanout service for reputation events`);
+      console.log(`[SSE] Connecting to Fanout service for player: ${playerId}`);
       console.log(`[SSE] URL: ${config.FANOUT_URL}/v1/stream/gameplay`);
 
       // Connect to Fanout service through Gateway (SSE stream)
@@ -51,9 +62,9 @@ export function useReputationEvents(
       });
 
       eventSource.addEventListener('open' as any, async () => {
-        console.log('[SSE] Connected to Fanout service (reputation)');
+        console.log('[SSE] Connected to Fanout service');
 
-        // Subscribe to social reputation channels
+        // Subscribe to channels after connection
         // Note: Using direct Fanout access for subscribe due to Gateway routing complexity
         try {
           const subscribeResponse = await fetch(`http://192.168.122.76:8086/v1/stream/gameplay/subscribe`, {
@@ -65,13 +76,18 @@ export function useReputationEvents(
             body: JSON.stringify({
               channels: [
                 `player.${playerId}`,
-                'social.reputation',
+                'game.services',
+                'game.economy',
               ],
             }),
           });
 
           if (subscribeResponse.ok) {
-            console.log('[SSE] Subscribed to reputation channels');
+            console.log('[SSE] Subscribed to channels:', [
+              `player.${playerId}`,
+              'game.services',
+              'game.economy',
+            ]);
           } else {
             console.error('[SSE] Subscription failed:', await subscribeResponse.text());
           }
@@ -84,19 +100,36 @@ export function useReputationEvents(
       eventSource.addEventListener('message' as any, (event: any) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('[SSE] Received reputation event:', data.type, data);
+          console.log('[SSE] Received event:', data.type, data);
 
-          if (data.type === 'reputation_tier_change' && data.player_id === playerId) {
-            // Invalidate reputation queries to refresh data
-            queryClient.invalidateQueries({ queryKey: ['reputations', playerId] });
-            queryClient.invalidateQueries({
-              queryKey: ['reputationHistory', playerId],
-            });
+          // Handle different event types
+          switch (data.type) {
+            case 'fuel_purchased':
+              if (data.payload.player_id === playerId) {
+                queryClient.invalidateQueries({ queryKey: ['ships', playerId] });
+                if (callbacks?.onFuelPurchased) {
+                  callbacks.onFuelPurchased(data.payload);
+                }
+              }
+              break;
 
-            // Call custom callback if provided
-            if (callbacks?.onTierChange) {
-              callbacks.onTierChange(data);
-            }
+            case 'repair_completed':
+              if (data.payload.player_id === playerId) {
+                queryClient.invalidateQueries({ queryKey: ['ships', playerId] });
+                if (callbacks?.onRepairCompleted) {
+                  callbacks.onRepairCompleted(data.payload);
+                }
+              }
+              break;
+
+            case 'credits_changed':
+              if (data.payload.player_id === playerId) {
+                queryClient.invalidateQueries({ queryKey: ['user'] });
+                if (callbacks?.onCreditsChanged) {
+                  callbacks.onCreditsChanged(data.payload);
+                }
+              }
+              break;
           }
         } catch (error) {
           console.error('[SSE] Parse error:', error);
@@ -104,7 +137,7 @@ export function useReputationEvents(
       });
 
       eventSource.addEventListener('error' as any, (error: any) => {
-        console.error('[SSE] Reputation connection error:', error);
+        console.error('[SSE] Connection error:', error);
         if (callbacks?.onError) {
           callbacks.onError(error);
         }
@@ -117,7 +150,7 @@ export function useReputationEvents(
 
     return () => {
       if (eventSourceRef.current) {
-        console.log('[SSE] Closing reputation connection');
+        console.log('[SSE] Closing station services connection');
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
@@ -128,27 +161,28 @@ export function useReputationEvents(
 /**
  * Alternative implementation using polling (if SSE is not available)
  *
- * This periodically refetches reputation data to detect changes.
+ * This periodically refetches ship and user data to detect changes.
  * Less efficient than SSE but works without additional dependencies.
  */
-export function useReputationPolling(
+export function useStationServicesPolling(
   playerId: string,
-  intervalMs: number = 30000 // Poll every 30 seconds
+  intervalMs: number = 10000 // Poll every 10 seconds
 ) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!playerId) return;
 
-    const pollReputation = () => {
+    const pollData = () => {
       // Invalidate queries to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ['reputations', playerId] });
+      queryClient.invalidateQueries({ queryKey: ['ships', playerId] });
+      queryClient.invalidateQueries({ queryKey: ['user'] });
     };
 
-    const interval = setInterval(pollReputation, intervalMs);
+    const interval = setInterval(pollData, intervalMs);
 
     // Initial poll
-    pollReputation();
+    pollData();
 
     return () => {
       clearInterval(interval);

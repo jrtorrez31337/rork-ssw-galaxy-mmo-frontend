@@ -10,10 +10,13 @@ import { reputationApi } from '@/api/reputation';
 import ShipControlPanel from '@/components/movement/ShipControlPanel';
 import ReputationList from '@/components/reputation/ReputationList';
 import ReputationHistory from '@/components/reputation/ReputationHistory';
+import CreditsDisplay from '@/components/credits/CreditsDisplay';
 import { useReputationEvents } from '@/hooks/useReputationEvents';
+import { useStationServices } from '@/hooks/useStationServices';
 import { getFactionName } from '@/components/reputation/utils';
 import Colors from '@/constants/colors';
 import type { Ship as ShipType, ReputationTierChangeEvent } from '@/types/api';
+import type { CreditsChangedEvent } from '@/types/station-services';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -70,18 +73,41 @@ export default function DashboardScreen() {
     );
   };
 
+  const handleCreditsChanged = (event: CreditsChangedEvent['payload']) => {
+    // Credits are automatically refreshed via query invalidation in the hook
+    const sign = event.amount_changed > 0 ? '+' : '';
+    const reasonText = event.reason.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    console.log(`[Credits] ${reasonText}: ${sign}${event.amount_changed.toFixed(2)} CR`);
+
+    // Show subtle alert for credit changes
+    if (Math.abs(event.amount_changed) > 0) {
+      const message = `${reasonText}\n${sign}${event.amount_changed.toFixed(2)} CR`;
+      Alert.alert('Credits Updated', message, [{ text: 'OK' }]);
+    }
+  };
+
   // Subscribe to real-time reputation events
   // Note: This requires SSE implementation (see useReputationEvents.ts)
   useReputationEvents(profileId || '', {
     onTierChange: handleReputationTierChange,
   });
 
+  // Subscribe to real-time station service events (Phase 1)
+  useStationServices(profileId || '', {
+    onCreditsChanged: handleCreditsChanged,
+  });
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.displayName}>{user?.display_name}</Text>
+        <View style={styles.headerLeft}>
+          <View>
+            <Text style={styles.welcomeText}>Welcome back,</Text>
+            <Text style={styles.displayName}>{user?.display_name}</Text>
+          </View>
+          {user?.credits && (
+            <CreditsDisplay credits={user.credits} size="medium" animated />
+          )}
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
           <LogOut size={24} color={Colors.danger} />
@@ -328,12 +354,16 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: 24,
     paddingTop: 60,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+  },
+  headerLeft: {
+    gap: 12,
+    flex: 1,
   },
   welcomeText: {
     fontSize: 14,

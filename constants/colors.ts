@@ -7,6 +7,7 @@ export default {
   secondary: '#7c3aed',
   accent: '#f59e0b',
   success: '#10b981',
+  warning: '#f59e0b',
   danger: '#ef4444',
   text: '#e2e8f0',
   textSecondary: '#94a3b8',

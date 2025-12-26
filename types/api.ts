@@ -14,6 +14,7 @@ export interface UserProfile {
   profile_id: string;
   display_name: string;
   active_sessions: number;
+  credits: string; // Decimal string for precision (Phase 1)
 }
 
 export interface CharacterAttributes {

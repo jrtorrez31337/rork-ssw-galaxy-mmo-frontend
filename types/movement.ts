@@ -1,4 +1,5 @@
 import { Vector3 } from './api';
+import { StationServicePricing } from './station-services';
 
 // ==================== STATION TYPES ====================
 
@@ -16,6 +17,7 @@ export interface Station {
   docking_capacity: number;
   docked_ships_count: number;
   created_at: string;
+  service_pricing?: StationServicePricing[]; // Phase 1: Service pricing info
 }
 
 // ==================== API REQUEST/RESPONSE TYPES ====================
