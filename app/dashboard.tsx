@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { User, Ship, LogOut, Plus, Package, Navigation, Shield } from 'lucide-react-native';
+import { User, Ship, LogOut, Plus, Package, Navigation, Shield, TrendingUp } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { shipApi } from '@/api/ships';
@@ -248,6 +248,23 @@ export default function DashboardScreen() {
                     >
                       <Package size={16} color={Colors.primary} />
                       <Text style={styles.shipActionButtonText}>Inventory</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.shipActions}>
+                    <TouchableOpacity
+                      style={[styles.shipActionButton, !ship.docked_at && styles.shipActionButtonDisabled]}
+                      onPress={() => {
+                        if (ship.docked_at) {
+                          router.push({ pathname: '/trading' as any, params: { shipId: ship.id } });
+                        } else {
+                          Alert.alert('Not Docked', 'You must be docked at a station to access trading', [{ text: 'OK' }]);
+                        }
+                      }}
+                    >
+                      <TrendingUp size={16} color={ship.docked_at ? Colors.primary : Colors.textDim} />
+                      <Text style={[styles.shipActionButtonText, !ship.docked_at && styles.shipActionButtonTextDisabled]}>
+                        Trading {!ship.docked_at && '(Dock Required)'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -541,6 +558,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600' as const,
     color: Colors.primary,
+  },
+  shipActionButtonDisabled: {
+    opacity: 0.5,
+    borderColor: Colors.border,
+  },
+  shipActionButtonTextDisabled: {
+    color: Colors.textDim,
   },
   modalOverlay: {
     flex: 1,
