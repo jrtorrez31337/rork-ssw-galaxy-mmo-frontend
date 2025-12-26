@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { User, Ship, LogOut, Plus, Package, Navigation, Shield, TrendingUp, Pickaxe } from 'lucide-react-native';
+import { User, Ship, LogOut, Plus, Package, Navigation, Shield, TrendingUp, Pickaxe, Radar } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { shipApi } from '@/api/ships';
@@ -279,6 +279,23 @@ export default function DashboardScreen() {
                       <Pickaxe size={16} color={!ship.docked_at ? Colors.primary : Colors.textDim} />
                       <Text style={[styles.shipActionButtonText, ship.docked_at && styles.shipActionButtonTextDisabled]}>
                         Mining {ship.docked_at && '(Undock Required)'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.shipActions}>
+                    <TouchableOpacity
+                      style={[styles.shipActionButton, ship.docked_at && styles.shipActionButtonDisabled]}
+                      onPress={() => {
+                        if (!ship.docked_at) {
+                          router.push({ pathname: '/sector' as any, params: { shipId: ship.id } });
+                        } else {
+                          Alert.alert('Cannot Scan', 'You must undock to access sector view', [{ text: 'OK' }]);
+                        }
+                      }}
+                    >
+                      <Radar size={16} color={!ship.docked_at ? Colors.primary : Colors.textDim} />
+                      <Text style={[styles.shipActionButtonText, ship.docked_at && styles.shipActionButtonTextDisabled]}>
+                        Sector View {ship.docked_at && '(Undock Required)'}
                       </Text>
                     </TouchableOpacity>
                   </View>
