@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Clock, ChevronRight } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import type { Mission } from '@/types/missions';
@@ -14,7 +14,7 @@ interface ActiveMissionTrackerProps {
  * Active mission tracker HUD
  * Compact overlay showing mission progress
  */
-export default function ActiveMissionTracker({
+const ActiveMissionTracker = React.memo(function ActiveMissionTracker({
   missions,
   onMissionPress,
   compact = false,
@@ -40,7 +40,9 @@ export default function ActiveMissionTracker({
       </View>
     </View>
   );
-}
+});
+
+export default ActiveMissionTracker;
 
 interface MissionTrackerItemProps {
   mission: Mission;
@@ -48,7 +50,7 @@ interface MissionTrackerItemProps {
   compact?: boolean;
 }
 
-function MissionTrackerItem({ mission, onPress, compact }: MissionTrackerItemProps) {
+const MissionTrackerItem = React.memo(function MissionTrackerItem({ mission, onPress, compact }: MissionTrackerItemProps) {
   const progressAnim = useRef(new Animated.Value(mission.progress_percentage)).current;
 
   // Animate progress changes
@@ -60,7 +62,7 @@ function MissionTrackerItem({ mission, onPress, compact }: MissionTrackerItemPro
     }).start();
   }, [mission.progress_percentage]);
 
-  const getTimeRemaining = () => {
+  const timeRemaining = useMemo(() => {
     if (!mission.expires_at) return null;
 
     const now = new Date();
@@ -76,11 +78,12 @@ function MissionTrackerItem({ mission, onPress, compact }: MissionTrackerItemPro
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
-  };
+  }, [mission.expires_at]);
 
-  const timeRemaining = getTimeRemaining();
-  const isExpiringSoon = mission.expires_at && timeRemaining && timeRemaining !== 'EXPIRED' &&
-    new Date(mission.expires_at).getTime() - new Date().getTime() < 30 * 60 * 1000; // 30 minutes
+  const isExpiringSoon = useMemo(() => {
+    return mission.expires_at && timeRemaining && timeRemaining !== 'EXPIRED' &&
+      new Date(mission.expires_at).getTime() - new Date().getTime() < 30 * 60 * 1000; // 30 minutes
+  }, [mission.expires_at, timeRemaining]);
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 100],
@@ -174,7 +177,7 @@ function MissionTrackerItem({ mission, onPress, compact }: MissionTrackerItemPro
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

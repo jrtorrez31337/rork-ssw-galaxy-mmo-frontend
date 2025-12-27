@@ -1,0 +1,180 @@
+schema_version: "1.2"
+
+product:
+  name: "SSW Client"
+  ux_target: "2D Space Shooter RPG Command Console"
+  description: >
+    A cockpit-style 2D space shooter RPG interface emphasizing persistent HUD,
+    contextual panels, real-time telemetry, and high information density.
+  non_goals:
+    - "flash-card UI for core gameplay loops"
+    - "screen-per-action navigation for gameplay"
+    - "3D UI"
+    - "casual mobile app metaphors for combat or progression"
+
+governance:
+  authority:
+    ux: "UX Authority Agent"
+    integration: "Integration Agent"
+    qa: "QA Agent"
+  enforcement:
+    non_interactive: true
+    guessing_allowed: false
+    blocked_on_ambiguity: true
+
+defaults:
+  density_mode: "standard"
+  panel_behavior:
+    mobile: "bottom_sheet"
+    tablet: "side_panel"
+  feedback_channels:
+    - "hud"
+    - "activity_feed"
+    - "alerts"
+  failure_handling:
+    show_error_state: true
+    retry_affordance: true
+
+foundation_decisions:
+  - id: "UX-F-0001"
+    status: "approved"
+    owner: "UX Authority"
+    title: "Persistent Cockpit Shell"
+    decision:
+      summary: >
+        All core gameplay occurs inside a persistent shell composed of a HUD,
+        primary navigation, and contextual panels.
+      rules:
+        - "HUD visible across all core gameplay tabs"
+        - "Primary navigation tabs do not remount stacks on switch"
+        - "Core actions do not navigate away from the shell"
+        - "Shell remains mounted during loading and error states"
+
+  - id: "UX-F-0002"
+    status: "approved"
+    owner: "UX Authority"
+    title: "Panel-First Interaction Model"
+    decision:
+      summary: >
+        Inspect and act flows use contextual panels instead of full-screen
+        navigation transitions.
+      rules:
+        - "Tap = inspect opens contextual panel"
+        - "Primary actions execute from panel"
+        - "Panels may stack only one level deep"
+        - "Closing a panel returns to previous shell state"
+        - "Results update HUD and activity feed"
+
+  - id: "UX-F-0003"
+    status: "approved"
+    owner: "UX Authority"
+    title: "Information Density Modes"
+    decision:
+      summary: >
+        HUD and key surfaces support configurable information density modes.
+      rules:
+        - "Compact: numeric values with minimal labels"
+        - "Standard: numeric values with icons"
+        - "Expanded: numeric values with icons and labels"
+        - "Density mode does not change navigation structure"
+
+  - id: "UX-F-0004"
+    status: "approved"
+    owner: "UX Authority"
+    title: "World Feel Telemetry"
+    decision:
+      summary: >
+        The interface must continuously communicate world activity and player
+        impact through telemetry surfaces.
+      rules:
+        - "At least one activity feed or alerts surface is accessible from all core tabs"
+        - "Flow state changes emit feed or alert entries"
+        - "Real-time events update HUD or feed when available"
+
+  - id: "UX-F-0005"
+    status: "approved"
+    owner: "UX Authority"
+    title: "Failure and Recovery Visibility"
+    decision:
+      summary: >
+        All gameplay-relevant flows must visibly handle failure, latency, and recovery.
+      rules:
+        - "Explicit loading, error, empty, and retry states are required"
+        - "Failures do not eject the user from the shell"
+        - "Retries must not duplicate side effects"
+
+  - id: "UX-F-0006"
+    status: "approved"
+    owner: "UX Authority"
+    title: "No Flash-Card Regression"
+    decision:
+      summary: >
+        Flash-card UI patterns are explicitly prohibited for core gameplay.
+      rules:
+        - "No centered single-card screens for gameplay loops"
+        - "No Next/Back card pagination for gameplay"
+        - "Cards may only exist inside panels or lists"
+
+flow_decisions:
+  schema:
+    description: >
+      Flow-specific UX decisions added only after backend-driven flow analysis.
+      Entries are binding once approved.
+    required_fields:
+      - id
+      - flow_id
+      - title
+      - entry_points
+      - panel_choreography
+      - feedback_rules
+      - hud_requirements
+      - failure_states
+      - qa_acceptance
+  entries: []
+
+prioritization:
+  top_flows_to_implement:
+    - "FLOW-COMBAT-ENCOUNTER"
+    - "FLOW-LOOT-TO-INVENTORY"
+    - "FLOW-MISSION-ACCEPT-TRACK"
+  constraints:
+    max_flows_per_sprint: 2
+    prefer_high_impact_low_effort: true
+    block_on_backend_ambiguity: true
+
+qa_test_hook_policy:
+  required: true
+  testid_prefix: "qa."
+  required_shell_ids:
+    - "qa.shell.root"
+    - "qa.hud.root"
+    - "qa.nav.tabs"
+    - "qa.feed.root"
+  required_state_ids:
+    - "qa.state.loading"
+    - "qa.state.error"
+    - "qa.state.empty"
+    - "qa.state.retry"
+  debug_probes:
+    enabled_in_dev: true
+    ids:
+      - "qa.debug.route"
+      - "qa.debug.panel_depth"
+      - "qa.debug.last_event_type"
+      - "qa.debug.subscriptions_count"
+
+qa_auto_checklist:
+  enforcement_mode: "blocking"
+  foundation:
+    UX-F-0001: ["shell-hud-visible", "no-tab-remount", "no-fullscreen-replacement"]
+    UX-F-0002: ["inspect-opens-panel", "action-from-panel", "panel-stack-depth"]
+    UX-F-0003: ["density-modes-present", "no-layout-break"]
+    UX-F-0004: ["feed-accessible", "telemetry-on-action"]
+    UX-F-0005: ["explicit-error-states", "retry-without-eject"]
+    UX-F-0006: ["no-centered-cards", "no-card-pagination"]
+
+notes:
+  usage:
+    - "Foundation decisions are enforced immediately."
+    - "Flow decisions are appended only after Flow Catalog and Flow Scoreboard exist."
+    - "Implementation must not exceed approved decisions."

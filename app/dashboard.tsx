@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -25,6 +25,12 @@ import type { CreditsChangedEvent } from '@/types/station-services';
 export default function DashboardScreen() {
   const router = useRouter();
   const { user, profileId, logout } = useAuth();
+
+  // Auto-redirect to new tab navigation
+  useEffect(() => {
+    router.replace('/(tabs)/map');
+  }, [router]);
+
   const [selectedShip, setSelectedShip] = useState<ShipType | null>(null);
   const [controlsModalVisible, setControlsModalVisible] = useState(false);
   const [selectedFactionId, setSelectedFactionId] = useState<string | null>(null);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Shield } from 'lucide-react-native';
 import { FactionReputation } from '@/types/api';
@@ -11,7 +11,7 @@ interface ReputationListProps {
   onFactionPress?: (factionId: string) => void;
 }
 
-export default function ReputationList({
+const ReputationList = React.memo(function ReputationList({
   reputations,
   isLoading,
   onFactionPress,
@@ -37,8 +37,11 @@ export default function ReputationList({
     );
   }
 
-  // Sort by score descending
-  const sortedReputations = [...reputations].sort((a, b) => b.score - a.score);
+  // Sort by score descending - memoized to prevent re-sorting on every render
+  const sortedReputations = useMemo(
+    () => [...reputations].sort((a, b) => b.score - a.score),
+    [reputations]
+  );
 
   return (
     <View style={styles.container}>
@@ -55,7 +58,9 @@ export default function ReputationList({
       ))}
     </View>
   );
-}
+});
+
+export default ReputationList;
 
 const styles = StyleSheet.create({
   container: {

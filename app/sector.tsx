@@ -30,6 +30,11 @@ import LootNotification from '@/components/loot/LootNotification';
 export default function SectorScreen() {
   const router = useRouter();
   const { user } = useAuth();
+
+  // Auto-redirect to Map tab (sector view is now integrated there)
+  useEffect(() => {
+    router.replace('/(tabs)/map');
+  }, [router]);
   const [isLoadingNPCs, setIsLoadingNPCs] = useState(false);
   const [currentSector] = useState('0,0,0'); // TODO: Get from ship/player state
   const [playerPosition] = useState<[number, number, number]>([0, 0, 0]); // TODO: Get from ship state
