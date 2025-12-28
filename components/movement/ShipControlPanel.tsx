@@ -9,16 +9,19 @@ import {
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { movementApi } from '@/api/movement';
+import { travelApi } from '@/api/travel';
 import { stationServicesApi } from '@/api/station-services';
 import { Ship, UserProfile } from '@/types/api';
 import { Station } from '@/types/movement';
 import FuelGauge from './FuelGauge';
 import JumpCooldownTimer from './JumpCooldownTimer';
-import JumpDialog from './JumpDialog';
-import DockingDialog from './DockingDialog';
+import TravelProgressBar from './TravelProgressBar';
+import { JumpPanel } from './JumpPanel';
+import { DockingPanel } from './DockingPanel';
 import StationServicesPanel from '@/components/station-services/StationServicesPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { reputationApi } from '@/api/reputation';
+import { useTravelStore } from '@/stores/travelStore';
 import Colors from '@/constants/colors';
 
 interface ShipControlPanelProps {
@@ -31,8 +34,43 @@ export default function ShipControlPanel({ ship }: ShipControlPanelProps) {
   const [jumpOnCooldown, setJumpOnCooldown] = useState(false);
   const queryClient = useQueryClient();
   const { user, profileId } = useAuth();
+  const { isInTransit, activeTravel, clearTravel } = useTravelStore();
 
   const isDocked = !!ship.docked_at;
+
+  // Cancel travel mutation
+  const cancelTravelMutation = useMutation({
+    mutationFn: (travelId: string) => travelApi.cancel(travelId),
+    onSuccess: (data) => {
+      clearTravel();
+      queryClient.invalidateQueries({ queryKey: ['ship'] });
+      queryClient.invalidateQueries({ queryKey: ['ships'] });
+      Alert.alert(
+        'Travel Cancelled',
+        `Returned to ${activeTravel?.from_sector}. Refunded ${data.fuel_refund.toFixed(1)} fuel units.`
+      );
+    },
+    onError: (error: any) => {
+      Alert.alert('Cancel Failed', 'Could not cancel travel. Please try again.');
+    },
+  });
+
+  const handleCancelTravel = () => {
+    if (!activeTravel) return;
+
+    Alert.alert(
+      'Cancel Travel',
+      'Are you sure you want to cancel travel? You will receive a partial fuel refund.',
+      [
+        { text: 'Continue Travel', style: 'cancel' },
+        {
+          text: 'Cancel Travel',
+          style: 'destructive',
+          onPress: () => cancelTravelMutation.mutate(activeTravel.travel_id),
+        },
+      ]
+    );
+  };
 
   // Fetch station data if docked
   const { data: stations } = useQuery({
@@ -170,20 +208,35 @@ export default function ShipControlPanel({ ship }: ShipControlPanelProps) {
       <View style={styles.statusSection}>
         <View style={styles.statusRow}>
           <Text style={styles.statusLabel}>Location:</Text>
-          <Text style={styles.statusValue}>{ship.location_sector}</Text>
+          <Text style={styles.statusValue}>
+            {isInTransit && activeTravel
+              ? `${activeTravel.from_sector} → ${activeTravel.to_sector}`
+              : ship.location_sector}
+          </Text>
         </View>
         <View style={styles.statusRow}>
           <Text style={styles.statusLabel}>Status:</Text>
           <Text
             style={[
               styles.statusValue,
-              { color: isDocked ? Colors.success : Colors.primary },
+              {
+                color: isInTransit
+                  ? Colors.accent
+                  : isDocked
+                  ? Colors.success
+                  : Colors.primary,
+              },
             ]}
           >
-            {isDocked ? 'Docked' : 'Free Flight'}
+            {isInTransit ? 'In Transit' : isDocked ? 'Docked' : 'Free Flight'}
           </Text>
         </View>
       </View>
+
+      {/* Travel Progress Bar */}
+      {isInTransit && (
+        <TravelProgressBar onCancel={handleCancelTravel} />
+      )}
 
       {/* Fuel Gauge */}
       <FuelGauge current={ship.fuel_current} capacity={ship.fuel_capacity} />
@@ -241,21 +294,21 @@ export default function ShipControlPanel({ ship }: ShipControlPanelProps) {
               style={[
                 styles.button,
                 styles.buttonPrimary,
-                (jumpOnCooldown || ship.in_combat) && styles.buttonDisabled,
+                (jumpOnCooldown || ship.in_combat || isInTransit) && styles.buttonDisabled,
               ]}
               onPress={() => setJumpDialogOpen(true)}
-              disabled={jumpOnCooldown || ship.in_combat}
+              disabled={jumpOnCooldown || ship.in_combat || isInTransit}
             >
-              <Text style={styles.buttonTextPrimary}>Jump to Sector</Text>
+              <Text style={styles.buttonTextPrimary}>Travel to Sector</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.button,
                 styles.buttonSecondary,
-                ship.in_combat && styles.buttonDisabled,
+                (ship.in_combat || isInTransit) && styles.buttonDisabled,
               ]}
               onPress={() => setDockDialogOpen(true)}
-              disabled={ship.in_combat}
+              disabled={ship.in_combat || isInTransit}
             >
               <Text style={styles.buttonTextSecondary}>Dock at Station</Text>
             </TouchableOpacity>
@@ -263,17 +316,28 @@ export default function ShipControlPanel({ ship }: ShipControlPanelProps) {
         )}
       </View>
 
-      {/* Dialogs */}
-      <JumpDialog
-        visible={jumpDialogOpen}
-        ship={ship}
-        onClose={() => setJumpDialogOpen(false)}
-      />
-      <DockingDialog
-        visible={dockDialogOpen}
-        ship={ship}
-        onClose={() => setDockDialogOpen(false)}
-      />
+      {/* Jump Panel (Inline) */}
+      {jumpDialogOpen && (
+        <JumpPanel
+          ship={ship}
+          isVisible={jumpDialogOpen}
+          onClose={() => setJumpDialogOpen(false)}
+          onJumpSuccess={() => {
+            setJumpOnCooldown(true);
+            setJumpDialogOpen(false);
+          }}
+        />
+      )}
+
+      {/* Docking Panel (Inline) */}
+      {dockDialogOpen && (
+        <DockingPanel
+          ship={ship}
+          isVisible={dockDialogOpen}
+          onClose={() => setDockDialogOpen(false)}
+          onDockSuccess={() => setDockDialogOpen(false)}
+        />
+      )}
     </View>
   );
 }

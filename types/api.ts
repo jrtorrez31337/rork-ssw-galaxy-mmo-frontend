@@ -50,6 +50,8 @@ export interface Vector3 {
 
 export type ShipType = 'scout' | 'fighter' | 'trader' | 'explorer';
 
+export type TravelStatus = 'idle' | 'in_transit' | 'arriving';
+
 export interface Ship {
   id: string;
   owner_id: string;
@@ -70,6 +72,9 @@ export interface Ship {
   last_jump_at?: string;
   created_at: string;
   stat_allocation?: ShipStats;
+  // Async travel fields
+  travel_status?: TravelStatus;
+  current_travel_id?: string;
 }
 
 export interface ApiError {

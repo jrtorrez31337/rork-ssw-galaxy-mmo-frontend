@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RefreshCw } from 'lucide-react-native';
 import { TopBar, Text, Button, EmptyState } from '@/ui';
@@ -9,19 +9,33 @@ import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
 import { npcApi } from '@/api/npc';
 import { combatApi } from '@/api/combat';
+import { movementApi } from '@/api/movement';
 import { useCombatEvents } from '@/hooks/useCombatEvents';
+import { useTravelEvents } from '@/hooks/useTravelEvents';
 import { useNPCStore } from '@/stores/npcStore';
 import { useCombatStore } from '@/stores/combatStore';
+import { useTravelStore } from '@/stores/travelStore';
 import SectorView2D from '@/components/npc/SectorView2D';
 import NPCList from '@/components/npc/NPCList';
 import CombatHUD from '@/components/combat/CombatHUD';
 import CombatResults from '@/components/combat/CombatResults';
 import LootNotification from '@/components/loot/LootNotification';
+import { QuickActionHUD } from '@/components/hud/QuickActionHUD';
+import { JumpPanel } from '@/components/movement/JumpPanel';
+import { DockingPanel } from '@/components/movement/DockingPanel';
+import { ChatPanel } from '@/components/chat/ChatPanel';
+import { MiniMap } from '@/components/hud/MiniMap';
+import { ExpandedRadar } from '@/components/hud/ExpandedRadar';
 
 export default function MapTab() {
   const { user, profileId } = useAuth();
   const [isLoadingNPCs, setIsLoadingNPCs] = useState(false);
   const [playerPosition] = useState<[number, number, number]>([0, 0, 0]); // TODO: Get from ship state
+  const [jumpPanelOpen, setJumpPanelOpen] = useState(false);
+  const [dockPanelOpen, setDockPanelOpen] = useState(false);
+  const [chatPanelOpen, setChatPanelOpen] = useState(false);
+  const [radarExpanded, setRadarExpanded] = useState(false);
+  const [jumpTargetSector, setJumpTargetSector] = useState<string | undefined>();
 
   const { data: ships } = useQuery({
     queryKey: ['ships', profileId],
@@ -32,11 +46,47 @@ export default function MapTab() {
   const currentShip = ships?.[0] || null;
   const currentSector = currentShip?.location_sector || '0,0,0';
 
+  // Fetch stations in current sector for mini-map
+  const { data: stationsData } = useQuery({
+    queryKey: ['stations', currentSector],
+    queryFn: () => movementApi.getStations(currentSector),
+    enabled: !!currentShip && !currentShip.docked_at,
+  });
+
   const { npcs, selectedNPC, setNPCs, setSelectedNPC, setLoading, setError } = useNPCStore();
   const { isInCombat, setCombatInstance } = useCombatStore();
+  const { isInTransit } = useTravelStore();
 
   // Subscribe to combat events
   useCombatEvents(profileId || '');
+
+  // Subscribe to travel events with callbacks for notifications
+  useTravelEvents(profileId || '', {
+    onTravelCompleted: (event) => {
+      Alert.alert(
+        'Arrived!',
+        `You have arrived at sector ${event.to_sector}`,
+        [{ text: 'OK' }]
+      );
+      // Reload NPCs for the new sector
+      loadNPCs();
+    },
+    onTravelCancelled: (event) => {
+      Alert.alert(
+        'Travel Cancelled',
+        `Returned to sector ${event.from_sector}. Fuel refunded: ${event.fuel_refund.toFixed(1)} units`
+      );
+    },
+    onTravelInterrupted: (event) => {
+      Alert.alert(
+        'Travel Interrupted!',
+        `Your ship was interdicted and dropped out at sector ${event.drop_sector}`,
+        [{ text: 'OK' }]
+      );
+      // Reload NPCs for the drop sector
+      loadNPCs();
+    },
+  });
 
   // Load NPCs when sector changes or when undocked
   useEffect(() => {
@@ -178,6 +228,89 @@ export default function MapTab() {
 
           {/* Loot Notification Modal */}
           <LootNotification />
+
+          {/* Mini-Map / Radar */}
+          <MiniMap
+            ship={currentShip}
+            stations={stationsData?.stations}
+            npcCount={npcs.length}
+            onTap={() => setRadarExpanded(true)}
+          />
+
+          {/* Expanded Radar Panel */}
+          <ExpandedRadar
+            visible={radarExpanded}
+            onClose={() => setRadarExpanded(false)}
+            ship={currentShip}
+            stations={stationsData?.stations}
+            npcs={npcs}
+            onSectorTap={(sector) => {
+              setJumpTargetSector(sector);
+              setRadarExpanded(false);
+              setJumpPanelOpen(true);
+            }}
+          />
+
+          {/* Quick Action HUD */}
+          <QuickActionHUD
+            onJumpPress={() => setJumpPanelOpen(true)}
+            onDockPress={() => setDockPanelOpen(true)}
+            onCombatPress={() => {
+              if (selectedNPC) {
+                handleInitiateCombat(selectedNPC.entity_id);
+              } else {
+                Alert.alert('No Target', 'Select an NPC to initiate combat');
+              }
+            }}
+            onChatPress={() => setChatPanelOpen(true)}
+            jumpDisabled={!currentShip || currentShip.in_combat || isInTransit}
+            dockDisabled={!currentShip || currentShip.in_combat || isInTransit}
+            combatDisabled={!currentShip || isInCombat || isInTransit || npcs.length === 0}
+          />
+
+          {/* Jump Panel */}
+          {currentShip && jumpPanelOpen && (
+            <JumpPanel
+              ship={currentShip}
+              targetSector={jumpTargetSector}
+              isVisible={jumpPanelOpen}
+              onClose={() => {
+                setJumpPanelOpen(false);
+                setJumpTargetSector(undefined);
+              }}
+              onJumpSuccess={() => {
+                setJumpPanelOpen(false);
+                setJumpTargetSector(undefined);
+              }}
+            />
+          )}
+
+          {/* Docking Panel */}
+          {currentShip && dockPanelOpen && (
+            <DockingPanel
+              ship={currentShip}
+              isVisible={dockPanelOpen}
+              onClose={() => setDockPanelOpen(false)}
+              onDockSuccess={() => setDockPanelOpen(false)}
+            />
+          )}
+
+          {/* Chat Panel Modal */}
+          <Modal
+            visible={chatPanelOpen}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={() => setChatPanelOpen(false)}
+          >
+            <SafeAreaView style={{ flex: 1, backgroundColor: tokens.colors.surface.base }} edges={['top', 'bottom']}>
+              <ChatPanel
+                playerId={profileId || ''}
+                currentSector={currentShip?.location_sector}
+                isVisible={chatPanelOpen}
+                onClose={() => setChatPanelOpen(false)}
+              />
+            </SafeAreaView>
+          </Modal>
         </>
       )}
     </SafeAreaView>
