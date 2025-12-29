@@ -5,6 +5,7 @@ import { OperationsPanel } from './OperationsPanel';
 import { TacticalPanel } from './TacticalPanel';
 import { EngineeringPanel } from './EngineeringPanel';
 import { CommsPanel } from './CommsPanel';
+import { FleetPanel } from './FleetPanel';
 
 /**
  * PanelRouter - Routes to appropriate panel content based on activeRail
@@ -17,6 +18,7 @@ import { CommsPanel } from './CommsPanel';
 
 const PANEL_MAP: Record<RailSystem, React.ComponentType> = {
   NAV: NavigationPanel,
+  FLT: FleetPanel,
   OPS: OperationsPanel,
   TAC: TacticalPanel,
   ENG: EngineeringPanel,

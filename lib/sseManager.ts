@@ -166,6 +166,7 @@ class SSEManager {
         'game.services.fuel_purchase', 'game.services.repair',
         'game.social.reputation',
         'game.chat.message',
+        'game.sector.delta', // Procgen state changes
       ];
 
       eventTypes.forEach(eventType => {

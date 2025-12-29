@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import { Navigation, Target, Wrench, Radio, Crosshair, LucideIcon } from 'lucide-react-native';
+import { Navigation, Target, Wrench, Radio, Crosshair, Rocket, LucideIcon } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore, RailSystem } from '@/stores/cockpitStore';
 
@@ -28,6 +28,7 @@ function RailButton({ system, Icon, label, isActive, isPulsing, onPress }: RailB
       case 'TAC': return tokens.colors.semantic.combat;
       case 'ENG': return tokens.colors.lcars.peach;
       case 'COM': return tokens.colors.semantic.communications;
+      case 'FLT': return tokens.colors.lcars.sky;
       default: return tokens.colors.lcars.orange;
     }
   };
@@ -75,6 +76,7 @@ export function LeftRail() {
 
   const railItems: { system: RailSystem; Icon: LucideIcon; label: string }[] = [
     { system: 'NAV', Icon: Navigation, label: 'NAV' },
+    { system: 'FLT', Icon: Rocket, label: 'FLT' },
     { system: 'OPS', Icon: Target, label: 'OPS' },
     { system: 'TAC', Icon: Crosshair, label: 'TAC' },
     { system: 'ENG', Icon: Wrench, label: 'ENG' },

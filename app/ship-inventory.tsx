@@ -32,11 +32,21 @@ export default function ShipInventoryScreen() {
     enabled: !!shipId,
   });
 
-  const { data: inventory, isLoading: loadingInventory } = useQuery({
+  const { data: inventory, isLoading: loadingInventory, error: inventoryError } = useQuery({
     queryKey: ['inventory', shipId],
     queryFn: () => inventoryApi.getInventory(shipId, 'ship'),
     enabled: !!shipId,
+    retry: false, // Don't retry on 404 - empty inventory is expected
   });
+
+  // Create default empty inventory if API returns 404
+  const effectiveInventory = inventory || (inventoryError ? {
+    owner_id: shipId,
+    owner_type: 'ship' as const,
+    capacity: ship?.cargo_capacity || 0,
+    used: 0,
+    items: [],
+  } : null);
 
   const handleItemPress = (item: InventoryItem) => {
     setSelectedItem(item);
@@ -61,16 +71,25 @@ export default function ShipInventoryScreen() {
     );
   }
 
-  if (!ship || !inventory) {
+  if (!ship) {
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>Ship or inventory not found</Text>
+        <Text style={styles.errorText}>Ship not found</Text>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
   }
+
+  // Use effective inventory (either from API or default empty)
+  const displayInventory = effectiveInventory || {
+    owner_id: shipId,
+    owner_type: 'ship' as const,
+    capacity: ship.cargo_capacity || 0,
+    used: 0,
+    items: [],
+  };
 
   return (
     <View style={styles.container}>
@@ -95,9 +114,9 @@ export default function ShipInventoryScreen() {
             <Text style={styles.sectionTitle}>Cargo Hold</Text>
           </View>
 
-          <CargoCapacityBar used={inventory.used} capacity={inventory.capacity} />
+          <CargoCapacityBar used={displayInventory.used} capacity={displayInventory.capacity} />
 
-          {inventory.items.length === 0 ? (
+          {displayInventory.items.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Your cargo hold is empty</Text>
               <Text style={styles.emptySubtext}>
@@ -106,7 +125,7 @@ export default function ShipInventoryScreen() {
             </View>
           ) : (
             <View style={styles.resourceList}>
-              {inventory.items.map((item) => (
+              {displayInventory.items.map((item) => (
                 <ResourceItem
                   key={item.id}
                   item={item}

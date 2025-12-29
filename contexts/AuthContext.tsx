@@ -24,12 +24,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const queryClient = useQueryClient();
   const [isInitialized, setIsInitialized] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [isTokenValidated, setIsTokenValidated] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: user, isLoading: isLoadingUser } = useQuery({
     queryKey: ['user'],
     queryFn: authApi.getMe,
-    enabled: isInitialized && profileId !== null,
+    enabled: isInitialized && profileId !== null && isTokenValidated,
     retry: false,
   });
 
@@ -38,11 +39,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       const savedProfileId = await storage.getProfileId();
       setProfileId(savedProfileId);
       setIsInitialized(true);
-
-      // Connect SSE if already logged in
-      if (savedProfileId) {
-        sseManager.connect(savedProfileId);
-      }
+      // Note: SSE connection is now deferred until token is validated
     };
     initAuth();
   }, []);
@@ -59,12 +56,18 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
       if (!accessToken || !refreshToken) {
         console.log('[Auth] No tokens available for refresh setup');
+        // No valid tokens - clear auth state
+        setProfileId(null);
+        setIsTokenValidated(false);
         return;
       }
 
       const expiresAt = getTokenExpiration(accessToken);
       if (!expiresAt) {
         console.log('[Auth] Could not decode token expiration');
+        // Invalid token format - clear auth state
+        setProfileId(null);
+        setIsTokenValidated(false);
         return;
       }
 
@@ -76,7 +79,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         console.log('[Auth] Token expired or expiring soon, refreshing now');
         await performTokenRefresh();
       } else {
-        console.log(`[Auth] Token refresh scheduled in ${Math.floor(refreshTime / 1000)} seconds`);
+        // Token is still valid - mark as validated and connect SSE
+        console.log(`[Auth] Token valid, refresh scheduled in ${Math.floor(refreshTime / 1000)} seconds`);
+        setIsTokenValidated(true);
+        sseManager.connect(profileId);
+
         refreshTimerRef.current = setTimeout(async () => {
           await performTokenRefresh();
         }, refreshTime);
@@ -99,6 +106,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         await storage.setRefreshToken(response.refresh_token);
 
         console.log('[Auth] Token refreshed successfully');
+
+        // Mark token as validated and connect SSE (if not already connected)
+        setIsTokenValidated(true);
+        sseManager.connect(profileId);
 
         // Set up next refresh
         setupTokenRefresh();
@@ -127,6 +138,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       const userProfile = await authApi.getMe();
       await storage.setProfileId(userProfile.profile_id);
       setProfileId(userProfile.profile_id);
+      setIsTokenValidated(true);
       queryClient.invalidateQueries({ queryKey: ['user'] });
 
       // Connect SSE stream for real-time events
@@ -142,6 +154,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       const userProfile = await authApi.getMe();
       await storage.setProfileId(userProfile.profile_id);
       setProfileId(userProfile.profile_id);
+      setIsTokenValidated(true);
       queryClient.invalidateQueries({ queryKey: ['user'] });
 
       // Connect SSE stream for real-time events
@@ -161,6 +174,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
     await storage.clearAll();
     setProfileId(null);
+    setIsTokenValidated(false);
     queryClient.clear();
   };
 

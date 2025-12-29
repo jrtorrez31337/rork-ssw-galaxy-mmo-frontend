@@ -7,7 +7,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
  * Per LCARS UI/UX Doctrine and Implementation Architecture
  */
 
-export type RailSystem = 'NAV' | 'OPS' | 'TAC' | 'ENG' | 'COM';
+export type RailSystem = 'NAV' | 'OPS' | 'TAC' | 'ENG' | 'COM' | 'FLT';
 export type PanelState = 'hidden' | 'peek' | 'expanded';
 export type AlertLevel = 'green' | 'yellow' | 'red';
 export type ViewportType = 'sector' | 'station' | 'system-map' | 'galaxy-map' | 'hyperspace';
@@ -33,6 +33,10 @@ interface RailStateData {
   COM: {
     activeChannel: string;
     unreadCount: number;
+  };
+  FLT: {
+    selectedShipId: string | null;
+    viewMode: 'list' | 'details' | 'inventory';
   };
 }
 
@@ -119,6 +123,10 @@ const initialRailState: RailStateData = {
   COM: {
     activeChannel: 'local',
     unreadCount: 0,
+  },
+  FLT: {
+    selectedShipId: null,
+    viewMode: 'list',
   },
 };
 
