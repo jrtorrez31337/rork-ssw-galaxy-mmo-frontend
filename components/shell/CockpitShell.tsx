@@ -46,6 +46,10 @@ interface CockpitShellProps {
 // Mount counter to verify shell never remounts
 let shellMountCount = 0;
 
+// Flag to track if initial navigation is complete
+// Expo Router may cause one remount during initial route resolution
+let initialNavigationComplete = false;
+
 export function CockpitShell({ children }: CockpitShellProps) {
   const markShellMounted = useCockpitStore((s) => s.markShellMounted);
   const shellMounted = useCockpitStore((s) => s.shellMounted);
@@ -58,11 +62,21 @@ export function CockpitShell({ children }: CockpitShellProps) {
 
     if (__DEV__) {
       console.log(`[CockpitShell] Mounted (instance #${mountId.current})`);
-      if (shellMountCount > 1) {
+
+      // Allow one remount during initial navigation (Expo Router behavior)
+      // Only warn if shell remounts AFTER initial navigation is complete
+      if (initialNavigationComplete && shellMountCount > 2) {
         console.warn(
-          `[CockpitShell] WARNING: Shell remounted! This violates doctrine. ` +
+          `[CockpitShell] WARNING: Shell remounted after navigation! This violates doctrine. ` +
           `Mount count: ${shellMountCount}`
         );
+      }
+
+      // Mark initial navigation as complete after first stable mount
+      if (shellMountCount === 2) {
+        setTimeout(() => {
+          initialNavigationComplete = true;
+        }, 1000);
       }
     }
 
@@ -120,6 +134,7 @@ export function getShellMountCount(): number {
 export function resetShellMountCount(): void {
   if (__DEV__) {
     shellMountCount = 0;
+    initialNavigationComplete = false;
   }
 }
 

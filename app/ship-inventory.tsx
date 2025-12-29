@@ -14,7 +14,7 @@ import { inventoryApi } from '@/api/inventory';
 import { shipApi } from '@/api/ships';
 import ResourceItem from '@/components/inventory/ResourceItem';
 import CargoCapacityBar from '@/components/inventory/CargoCapacityBar';
-import TransferModal from '@/components/inventory/TransferModal';
+import TransferPanel from '@/components/inventory/TransferPanel';
 import type { InventoryItem } from '@/api/inventory';
 import Colors from '@/constants/colors';
 
@@ -163,9 +163,9 @@ export default function ShipInventoryScreen() {
         </View>
       </ScrollView>
 
-      {/* Transfer Modal */}
+      {/* Transfer Panel */}
       {selectedItem && (
-        <TransferModal
+        <TransferPanel
           visible={showTransferModal}
           sourceId={shipId}
           sourceType="ship"

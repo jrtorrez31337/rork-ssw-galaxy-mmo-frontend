@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { OrderSide } from '@/types/economy';
+import type { OrderSide, ActiveOrder } from '@/types/economy';
 
 /**
  * Trading state management store
@@ -20,6 +20,9 @@ interface TradingState {
   isPlacingOrder: boolean;
   lastOrderStatus: 'pending' | 'partial' | 'filled' | null;
 
+  // Active orders tracking
+  activeOrders: ActiveOrder[];
+
   // Actions
   setSelectedMarket: (marketId: string) => void;
   setSelectedCommodity: (commodity: string) => void;
@@ -28,6 +31,9 @@ interface TradingState {
   setOrderQuantity: (quantity: number) => void;
   setIsPlacingOrder: (isPlacing: boolean) => void;
   setLastOrderStatus: (status: 'pending' | 'partial' | 'filled' | null) => void;
+  addActiveOrder: (order: ActiveOrder) => void;
+  removeActiveOrder: (orderId: string) => void;
+  updateOrderStatus: (orderId: string, status: 'pending' | 'partial' | 'filled' | 'cancelled') => void;
   resetOrderForm: () => void;
   reset: () => void;
 }
@@ -40,6 +46,7 @@ const initialState = {
   orderQuantity: 0,
   isPlacingOrder: false,
   lastOrderStatus: null,
+  activeOrders: [] as ActiveOrder[],
 };
 
 export const useTradingStore = create<TradingState>((set) => ({
@@ -58,6 +65,23 @@ export const useTradingStore = create<TradingState>((set) => ({
   setIsPlacingOrder: (isPlacing) => set({ isPlacingOrder: isPlacing }),
 
   setLastOrderStatus: (status) => set({ lastOrderStatus: status }),
+
+  addActiveOrder: (order) =>
+    set((state) => ({
+      activeOrders: [...state.activeOrders, order],
+    })),
+
+  removeActiveOrder: (orderId) =>
+    set((state) => ({
+      activeOrders: state.activeOrders.filter((o) => o.order_id !== orderId),
+    })),
+
+  updateOrderStatus: (orderId, status) =>
+    set((state) => ({
+      activeOrders: state.activeOrders.map((o) =>
+        o.order_id === orderId ? { ...o, status } : o
+      ),
+    })),
 
   resetOrderForm: () =>
     set({

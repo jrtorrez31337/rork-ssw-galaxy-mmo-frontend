@@ -37,6 +37,17 @@ export interface Orderbook {
   midpoint: string;
 }
 
+export interface ActiveOrder {
+  order_id: string;
+  market_id: string;
+  commodity: string;
+  side: OrderSide;
+  price: string;
+  quantity: number;
+  status: OrderStatus;
+  created_at: string;
+}
+
 export interface Trade {
   trade_id: string;
   commodity: string;

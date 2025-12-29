@@ -80,10 +80,22 @@ export const economyApi = {
   },
 
   /**
-   * Cancel an order (if endpoint exists)
-   * Note: This endpoint may not be implemented yet in backend
+   * Cancel a pending or partial order
+   *
+   * @param marketId - UUID of the market/station
+   * @param orderId - UUID of the order to cancel
+   * @param commodity - Commodity type (required by backend)
+   * @param side - Order side ("buy" or "sell", required by backend)
+   * @returns Success confirmation
    */
-  cancelOrder: async (marketId: string, orderId: string): Promise<any> => {
-    return apiClient.delete(`/markets/${marketId}/orders/${orderId}`);
+  cancelOrder: async (
+    marketId: string,
+    orderId: string,
+    commodity: string,
+    side: string
+  ): Promise<{ success: boolean }> => {
+    return apiClient.delete(
+      `/markets/${marketId}/orders/${orderId}?commodity=${encodeURIComponent(commodity)}&side=${side}`
+    );
   },
 };

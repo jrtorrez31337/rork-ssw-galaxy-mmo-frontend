@@ -1,23 +1,47 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { User } from 'lucide-react-native';
-import { Text, Card } from './';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { User, Edit2 } from 'lucide-react-native';
+import { Text } from './Text';
+import { Card } from './Card';
 import { tokens } from '../theme';
 import type { Character } from '@/types/api';
 
 interface CharacterCardProps {
   character: Character;
+  onEdit?: (character: Character) => void;
 }
 
-export const CharacterCard = React.memo(function CharacterCard({ character }: CharacterCardProps) {
+export const CharacterCard = React.memo(function CharacterCard({ character, onEdit }: CharacterCardProps) {
+  const attributesSummary = `Piloting ${character.attributes.piloting}, Engineering ${character.attributes.engineering}, Science ${character.attributes.science}, Tactics ${character.attributes.tactics}, Leadership ${character.attributes.leadership}`;
+
   return (
-    <Card variant="default" padding={4}>
-      <View style={styles.header}>
-        <User size={20} color={tokens.colors.primary.main} />
-        <Text variant="heading" weight="bold">
-          {character.name}
-        </Text>
-      </View>
+    <View
+      accessible
+      accessibilityRole="summary"
+      accessibilityLabel={`Character ${character.name} from ${character.home_sector}. ${attributesSummary}`}
+    >
+      <Card variant="default" padding={4}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <User size={20} color={tokens.colors.primary.main} />
+            <Text variant="heading" weight="bold">
+              {character.name}
+            </Text>
+          </View>
+          {onEdit && (
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => onEdit(character)}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${character.name}`}
+              accessibilityHint="Opens character edit panel"
+            >
+              <Edit2 size={16} color={tokens.colors.text.secondary} />
+            </TouchableOpacity>
+          )}
+        </View>
 
       <Text variant="body" color={tokens.colors.text.secondary} style={styles.sector}>
         Home Sector: {character.home_sector}
@@ -69,7 +93,8 @@ export const CharacterCard = React.memo(function CharacterCard({ character }: Ch
           </View>
         </View>
       </View>
-    </Card>
+      </Card>
+    </View>
   );
 });
 
@@ -77,8 +102,21 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing[2],
+    justifyContent: 'space-between',
     marginBottom: tokens.spacing[1],
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+  },
+  editButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radius.base,
+    backgroundColor: tokens.colors.surface.raised,
   },
   sector: {
     marginBottom: tokens.spacing[3],

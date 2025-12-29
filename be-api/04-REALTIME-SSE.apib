@@ -1,0 +1,992 @@
+FORMAT: 1A
+HOST: http://192.168.122.76:8080/v1
+
+# SSW Galaxy MMO - Real-Time Events (SSE) (vNext 2.0)
+
+**Version**: 2.0 (vNext)
+**Status**: Implementation-Grounded
+**Last Verified**: 2025-12-27
+**Service**: Fanout (Internal Port: 8086)
+
+---
+
+## Document Purpose
+
+This document covers the **Server-Sent Events (SSE)** system for real-time gameplay updates:
+- **SSE Connection**: Establishing event streams
+- **Channel Subscriptions**: Managing event subscriptions
+- **Event Types**: Complete catalog of all game events
+- **Event Schemas**: Payload formats for each event type
+- **Client Integration**: Examples and best practices
+
+**Code**: `/services/fanout/`
+
+**Related Documents**:
+- See `01-OVERVIEW.apib` for global standards
+- See `03B-WORLDSIM.apib` for movement events
+- See `03C-COMBAT.apib` for combat events
+- See `03D-ECONOMY.apib` for economy events
+
+---
+
+## SSE Overview
+
+### Server-Sent Events (SSE)
+
+SSW Galaxy MMO uses **Server-Sent Events** for unidirectional real-time push from server to client.
+
+**Protocol**: HTTP-based, text/event-stream
+**Connection**: Long-lived, persistent
+**Direction**: Server → Client (one-way)
+**Fallback**: WebSockets planned but not implemented
+
+**Advantages**:
+- Built on HTTP (firewall-friendly)
+- Automatic reconnection
+- Event ID support for resume (planned but not implemented)
+- Simple client-side API (`EventSource`)
+
+**Limitations**:
+- Unidirectional (client cannot send events via SSE)
+- Browser limit of 6 concurrent connections per domain
+- No binary data support
+
+---
+
+### Canonical SSE Endpoint
+
+**✅ CORRECTED FROM v1.2**: The canonical SSE endpoint is `/v1/stream/gameplay` (not `/v1/events`).
+
+**Endpoint Paths**:
+- **Canonical**: `GET /v1/stream/gameplay` (proxied via gateway)
+- **Legacy**: `GET /v1/events` (still works, direct access to fanout service)
+
+**Recommendation**: Use `/v1/stream/gameplay` for all new clients.
+
+**Code**: `/services/fanout/cmd/main.go:110-114` (route registration)
+
+---
+
+## SSE Connection
+
+### GET /v1/stream/gameplay
+
+Establish a Server-Sent Events connection for real-time gameplay updates.
+
+**Authentication**: Optional (via headers)
+
+**Headers**:
+- `X-Player-ID` (optional): Profile ID for player-specific events
+- `X-Session-ID` (optional): Session ID for session tracking
+
+**Query Parameters**:
+- `channels` (optional): Comma-separated list of channels to subscribe to
+  - Example: `game.movement.jump,game.combat.start,player.{player_id}`
+  - If omitted, only `player.{player_id}` channel is subscribed (if X-Player-ID provided)
+
+**Response** (200 OK):
+```
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+X-Accel-Buffering: no
+
+id: event-uuid-1
+event: connected
+data: {"subscriber_id":"sub-uuid-12345"}
+
+id: event-uuid-2
+event: heartbeat
+data: {"time":1735310400}
+
+id: event-uuid-3
+event: game.movement.jump
+data: {"ship_id":"uuid","player_id":"uuid","from_sector":"0,0,0","to_sector":"1,0,0","fuel_consumed":0.2}
+```
+
+**SSE Event Format**:
+```
+id: <event-uuid>
+event: <event-type>
+data: <json-payload>
+
+```
+
+**Connection Lifecycle**:
+1. Client connects with `EventSource` or HTTP client
+2. Server sends `connected` event with `subscriber_id`
+3. Server sends `heartbeat` events every 30 seconds
+4. Server sends subscribed events as they occur
+5. Client reconnects automatically on disconnect
+
+**Heartbeat Interval**: 30 seconds (keeps connection alive)
+
+**Channel Buffer**: 256 events per subscriber (events dropped if buffer full)
+
+**Code**: `/services/fanout/internal/handlers/sse.go:29-113`
+
+---
+
+### System Events
+
+#### Event: connected
+
+Sent immediately upon connection establishment.
+
+**Channel**: `system`
+
+**Payload**:
+```json
+{
+  "subscriber_id": "sub-uuid-12345"
+}
+```
+
+**Usage**: Store `subscriber_id` for managing subscriptions with POST endpoints.
+
+---
+
+#### Event: heartbeat
+
+Sent every 30 seconds to keep connection alive.
+
+**Channel**: `system`
+
+**Payload**:
+```json
+{
+  "time": 1735310400
+}
+```
+
+**Usage**: Client can detect stale connections if heartbeat stops.
+
+---
+
+## Channel Management
+
+### POST /v1/stream/gameplay/subscribe
+
+Add channel subscriptions to an existing SSE connection.
+
+**Authentication**: Not required (uses subscriber_id from connection)
+
+**Request Body**:
+```json
+{
+  "subscriber_id": "sub-uuid-12345",
+  "channels": ["game.combat.start", "game.economy.trade"]
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "channels": ["game.combat.start", "game.economy.trade"]
+}
+```
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body or missing subscriber_id
+
+**Code**: `/services/fanout/internal/handlers/sse.go:115-136`
+
+---
+
+### POST /v1/stream/gameplay/unsubscribe
+
+Remove channel subscriptions from an existing SSE connection.
+
+**Authentication**: Not required
+
+**Request Body**:
+```json
+{
+  "subscriber_id": "sub-uuid-12345",
+  "channels": ["game.combat.start"]
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "channels": ["game.combat.start"]
+}
+```
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body
+
+**Code**: `/services/fanout/internal/handlers/sse.go:138-159`
+
+---
+
+### GET /v1/stream/gameplay/stats
+
+Get real-time statistics about the SSE broker.
+
+**Authentication**: Not required
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "total_subscribers": 142,
+    "total_channels": 58,
+    "events_published_total": 45823,
+    "events_dropped_total": 23,
+    "uptime_seconds": 7200,
+    "nats_connected": true
+  }
+}
+```
+
+**Field Descriptions**:
+- `total_subscribers`: Active SSE connections
+- `total_channels`: Unique channels with subscribers
+- `events_published_total`: Events sent since broker started
+- `events_dropped_total`: Events dropped due to full subscriber buffers
+- `uptime_seconds`: Broker uptime
+- `nats_connected`: NATS connection status
+
+**Code**: `/services/fanout/internal/handlers/sse.go` (Stats method)
+
+---
+
+## Channel Structure
+
+### Channel Naming Convention
+
+**Format**: `<category>.<subcategory>.<action>`
+
+**Categories**:
+- `game.*` - Global gameplay events (broadcast to all subscribers)
+- `player.<player_id>` - Personal events (only sent to specific player)
+- `sector.<x>,<y>,<z>` - Sector-specific events (ships in sector)
+- `faction.<faction_id>` - Faction-wide events (faction members)
+- `combat.<combat_id>` - Combat instance events (participants)
+- `system` - System events (connected, heartbeat)
+
+---
+
+### Game Event Channels
+
+| Channel | Description | Published By | Example Events |
+|---------|-------------|--------------|----------------|
+| `game.movement.jump` | Hyperspace jumps | WorldSim | Ship jumped sectors |
+| `game.movement.dock` | Ship docking | WorldSim | Ship docked at station |
+| `game.movement.undock` | Ship undocking | WorldSim | Ship left station |
+| `game.combat.start` | Combat started | Combat | New combat instance |
+| `game.combat.action` | Combat actions | Combat | Attack, ability use |
+| `game.combat.outcome` | Combat ended | Combat | Victory, defeat, flee |
+| `game.combat.loot` | Loot dropped | Combat | NPC killed, loot generated |
+| `game.economy.trade` | Trade executed | Economy | Market order filled |
+| `game.economy.order_placed` | Order created | Economy | New buy/sell order |
+| `game.economy.order_cancelled` | Order cancelled | Economy | Order removed |
+| `game.mining.extract` | Resources extracted | WorldSim/Mining | Mining operation completed |
+| `game.missions.assigned` | Mission accepted | Missions | Player accepted mission |
+| `game.missions.completed` | Mission finished | Missions | Mission successfully completed |
+| `game.missions.failed` | Mission failed | Missions | Mission expired or failed |
+| `game.missions.objective` | Objective updated | Missions | Progress on objective |
+| `game.social.reputation` | Reputation changed | Social | Faction standing updated |
+| `game.chat.message` | Chat message | Chat | Message in room |
+| `game.services.fuel_purchase` | Ship refueled | WorldSim/Station | Fuel purchased |
+| `game.services.repair` | Ship repaired | WorldSim/Station | Hull/shield repaired |
+
+---
+
+### Personal Event Channels
+
+**Format**: `player.<player_id>`
+
+**Auto-Subscribed**: If `X-Player-ID` header is provided, this channel is automatically subscribed.
+
+**Events on Personal Channel**:
+- All events where `player_id` matches (copies from game channels)
+- Private notifications (mission assignments, personal messages)
+- Inventory changes
+- Credits changes
+- Reputation changes
+- Ship status updates
+
+---
+
+## Event Schemas
+
+### Movement Events
+
+#### Event: game.movement.jump
+
+**Published When**: Ship completes hyperspace jump
+
+**Payload**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "player_id": "38a87211-63b6-409b-b433-8f443e333953",
+  "from_sector": "0,0,0",
+  "to_sector": "1,0,0",
+  "fuel_consumed": 0.2,
+  "fuel_remaining": 99.8,
+  "position": {"x": 0, "y": 0, "z": 0},
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+**Code**: `/services/worldsim/internal/service/movement.go:198-210` (event publishing)
+
+---
+
+#### Event: game.movement.dock
+
+**Published When**: Ship docks at station
+
+**Payload**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "player_id": "38a87211-63b6-409b-b433-8f443e333953",
+  "station_id": "00000000-0000-0000-0000-000000000101",
+  "station_name": "New Eden Trade Hub",
+  "sector": "0,0,0",
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+---
+
+#### Event: game.movement.undock
+
+**Published When**: Ship undocks from station
+
+**Payload**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "player_id": "38a87211-63b6-409b-b433-8f443e333953",
+  "station_id": "00000000-0000-0000-0000-000000000101",
+  "sector": "0,0,0",
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+---
+
+### Combat Events
+
+#### Event: game.combat.start
+
+**Published When**: Combat instance created
+
+**Payload**:
+```json
+{
+  "combat_id": "combat-uuid-12345",
+  "sector": "1,2,-3",
+  "participants": [
+    {
+      "ship_id": "ship-uuid-1",
+      "player_id": "player-uuid-1",
+      "ship_type": "fighter",
+      "hull": 1000,
+      "shield": 300
+    },
+    {
+      "npc_id": "npc-uuid-1",
+      "npc_type": "pirate_frigate",
+      "hull": 600,
+      "shield": 250
+    }
+  ],
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `combat.{combat_id}`, `player.{player_id}` for each participant
+
+---
+
+#### Event: game.combat.action
+
+**Published When**: Combat action occurs (attack, ability use, item use)
+
+**Payload**:
+```json
+{
+  "combat_id": "combat-uuid-12345",
+  "tick": 42,
+  "attacker_id": "ship-uuid-1",
+  "target_id": "npc-uuid-1",
+  "action_type": "attack",
+  "damage": 150,
+  "target_hull_remaining": 450,
+  "target_shield_remaining": 100,
+  "timestamp": 1735310400
+}
+```
+
+**Field Descriptions**:
+- `tick`: Combat tick number (increments each action)
+- `action_type`: `attack`, `ability`, `item`, `flee`
+- `damage`: Damage dealt (0 if miss or non-damage action)
+
+**Also Published To**: `combat.{combat_id}`, `player.{player_id}` for participants
+
+---
+
+#### Event: game.combat.outcome
+
+**Published When**: Combat instance ends
+
+**Payload**:
+```json
+{
+  "combat_id": "combat-uuid-12345",
+  "outcome": "victory",
+  "victor_id": "ship-uuid-1",
+  "defeated_id": "npc-uuid-1",
+  "duration_seconds": 45,
+  "loot_generated": true,
+  "timestamp": 1735310400
+}
+```
+
+**Field Descriptions**:
+- `outcome`: `victory`, `defeat`, `flee`, `draw`
+- `victor_id`: Winner's ship/NPC ID (null if draw)
+- `defeated_id`: Loser's ship/NPC ID (null if draw or flee)
+
+**Also Published To**: `combat.{combat_id}`, `player.{player_id}` for participants
+
+---
+
+#### Event: game.combat.loot
+
+**Published When**: NPC is killed and loot is generated
+
+**✅ CORRECTED FROM v1.2**: Added `tick` and `npc_type` fields
+
+**Payload**:
+```json
+{
+  "combat_id": "combat-uuid-12345",
+  "tick": 56,
+  "npc_id": "npc-uuid-1",
+  "npc_type": "pirate_frigate",
+  "victor_id": "ship-uuid-1",
+  "loot": {
+    "credits": 450,
+    "resources": [
+      {"resource_type": "iron_ore", "quantity": 25, "quality": 1.1},
+      {"resource_type": "hydrogen", "quantity": 15, "quality": 1.0}
+    ],
+    "equipment": []
+  },
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `combat.{combat_id}`, `player.{victor_id}`
+
+---
+
+### Economy Events
+
+#### Event: game.economy.trade
+
+**Published When**: Market order is filled (trade executed)
+
+**Payload**:
+```json
+{
+  "trade_id": "trade-uuid-12345",
+  "buyer_id": "player-uuid-1",
+  "seller_id": "player-uuid-2",
+  "resource_type": "iron_ore",
+  "quantity": 50,
+  "price_per_unit": "12.50",
+  "total_cost": "625.00",
+  "sector": "0,0,0",
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{buyer_id}`, `player.{seller_id}`
+
+---
+
+#### Event: game.economy.order_placed
+
+**Published When**: New buy or sell order is created
+
+**Payload**:
+```json
+{
+  "order_id": "order-uuid-12345",
+  "player_id": "player-uuid-1",
+  "order_type": "buy",
+  "resource_type": "titanium_ore",
+  "quantity": 100,
+  "price_per_unit": "150.00",
+  "sector": "1,2,-3",
+  "expires_at": "2025-12-30T12:00:00Z",
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`, `sector.{sector}`
+
+---
+
+#### Event: game.economy.order_cancelled
+
+**Published When**: Order is cancelled or expires
+
+**Payload**:
+```json
+{
+  "order_id": "order-uuid-12345",
+  "player_id": "player-uuid-1",
+  "reason": "player_cancelled",
+  "timestamp": 1735310400
+}
+```
+
+**Reason Values**: `player_cancelled`, `expired`, `filled`
+
+**Also Published To**: `player.{player_id}`
+
+---
+
+### Mining Events
+
+#### Event: game.mining.extract
+
+**Published When**: Resources are extracted from mining node
+
+**Payload**:
+```json
+{
+  "ship_id": "ship-uuid-1",
+  "player_id": "player-uuid-1",
+  "resource_node_id": "node-uuid-1",
+  "resource_type": "iron_ore",
+  "quantity": 50,
+  "quality": 1.15,
+  "sector": "2,3,-1",
+  "node_quantity_remaining": 4450,
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`, `sector.{sector}`
+
+---
+
+### Mission Events
+
+#### Event: game.missions.assigned
+
+**Published When**: Player accepts a mission
+
+**Payload**:
+```json
+{
+  "mission_id": "mission-uuid-1",
+  "player_id": "player-uuid-1",
+  "template_name": "Clear Pirate Threat",
+  "description": "Eliminate 5 hostile pirate ships in sector 3,4,-2",
+  "reward_credits": 500,
+  "reward_reputation": 50,
+  "faction_id": "terran_federation",
+  "expires_at": 1735396800,
+  "objectives": [
+    {
+      "id": "obj-1",
+      "type": "kill_npcs",
+      "target_type": "pirate",
+      "target_count": 5,
+      "current_count": 0
+    }
+  ],
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+---
+
+#### Event: game.missions.objective
+
+**Published When**: Mission objective progress updates
+
+**Payload**:
+```json
+{
+  "mission_id": "mission-uuid-1",
+  "player_id": "player-uuid-1",
+  "objective_id": "obj-1",
+  "current_count": 3,
+  "target_count": 5,
+  "completed": false,
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+---
+
+#### Event: game.missions.completed
+
+**Published When**: Mission is successfully completed
+
+**Payload**:
+```json
+{
+  "mission_id": "mission-uuid-1",
+  "player_id": "player-uuid-1",
+  "credits_awarded": 500,
+  "reputation_awarded": 50,
+  "faction_id": "terran_federation",
+  "items_awarded": [],
+  "completion_time_seconds": 1800,
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+---
+
+### Station Service Events
+
+#### Event: game.services.fuel_purchase
+
+**Published When**: Ship refuels at station
+
+**Payload**:
+```json
+{
+  "ship_id": "ship-uuid-1",
+  "player_id": "player-uuid-1",
+  "station_id": "station-uuid-1",
+  "station_name": "New Eden Trade Hub",
+  "amount": 50.0,
+  "cost": 450.00,
+  "fuel_remaining": 149.8,
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+**Code**: `/services/worldsim/internal/stationservices/service.go:383-409`
+
+---
+
+#### Event: game.services.repair
+
+**Published When**: Ship is repaired at station
+
+**Payload**:
+```json
+{
+  "ship_id": "ship-uuid-1",
+  "player_id": "player-uuid-1",
+  "station_id": "station-uuid-1",
+  "station_name": "New Eden Trade Hub",
+  "hull_repaired": 150,
+  "shield_repaired": 50,
+  "cost": 1200.00,
+  "hull_current": 1000,
+  "shield_current": 300,
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`
+
+**Code**: `/services/worldsim/internal/stationservices/service.go:412-440`
+
+---
+
+### Social Events
+
+#### Event: game.social.reputation
+
+**Published When**: Faction reputation changes
+
+**Payload**:
+```json
+{
+  "player_id": "player-uuid-1",
+  "faction_id": "terran_federation",
+  "old_reputation": 250,
+  "new_reputation": 300,
+  "change": 50,
+  "reason": "mission_completed",
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `player.{player_id}`, `faction.{faction_id}`
+
+---
+
+### Chat Events
+
+#### Event: game.chat.message
+
+**Published When**: Message sent to chat room
+
+**Payload**:
+```json
+{
+  "room_id": "room-uuid-1",
+  "room_type": "sector",
+  "sender_id": "player-uuid-1",
+  "sender_name": "Captain Nova",
+  "message": "Anyone want to team up for trading?",
+  "timestamp": 1735310400
+}
+```
+
+**Also Published To**: `chat.room.{room_id}`, all players in room
+
+---
+
+## Client Integration
+
+### JavaScript Example
+
+```javascript
+// Connect to SSE
+const eventSource = new EventSource(
+  'http://192.168.122.76:8080/v1/stream/gameplay?channels=game.movement.jump,game.combat.start',
+  {
+    headers: {
+      'X-Player-ID': 'player-uuid-12345'
+    }
+  }
+);
+
+// Handle connection
+eventSource.addEventListener('connected', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Connected! Subscriber ID:', data.subscriber_id);
+
+  // Store subscriber_id for managing subscriptions
+  window.subscriberId = data.subscriber_id;
+});
+
+// Handle heartbeat
+eventSource.addEventListener('heartbeat', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Heartbeat:', new Date(data.time * 1000));
+});
+
+// Handle specific events
+eventSource.addEventListener('game.movement.jump', (e) => {
+  const data = JSON.parse(e.data);
+  console.log(`Ship ${data.ship_id} jumped from ${data.from_sector} to ${data.to_sector}`);
+  console.log(`Fuel consumed: ${data.fuel_consumed}, Remaining: ${data.fuel_remaining}`);
+
+  // Update UI
+  updateShipPosition(data.ship_id, data.to_sector, data.position);
+  updateShipFuel(data.ship_id, data.fuel_remaining);
+});
+
+eventSource.addEventListener('game.combat.start', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Combat started:', data.combat_id);
+
+  // Show combat UI
+  showCombatInterface(data.combat_id, data.participants);
+});
+
+// Handle errors
+eventSource.onerror = (error) => {
+  console.error('SSE connection error:', error);
+  // EventSource will automatically reconnect
+};
+
+// Add channel subscription dynamically
+async function subscribeToChannel(channel) {
+  const response = await fetch('http://192.168.122.76:8080/v1/stream/gameplay/subscribe', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      subscriber_id: window.subscriberId,
+      channels: [channel]
+    })
+  });
+
+  const result = await response.json();
+  console.log('Subscribed to:', result.channels);
+}
+
+// Example: Subscribe to combat channel when entering combat
+subscribeToChannel('combat.combat-uuid-12345');
+```
+
+---
+
+### Python Example
+
+```python
+import sseclient
+import requests
+import json
+
+# Connect to SSE
+headers = {
+    'X-Player-ID': 'player-uuid-12345'
+}
+
+response = requests.get(
+    'http://192.168.122.76:8080/v1/stream/gameplay',
+    params={'channels': 'game.movement.jump,game.combat.start'},
+    headers=headers,
+    stream=True
+)
+
+client = sseclient.SSEClient(response)
+
+subscriber_id = None
+
+for event in client.events():
+    event_type = event.event
+    data = json.loads(event.data)
+
+    if event_type == 'connected':
+        subscriber_id = data['subscriber_id']
+        print(f'Connected! Subscriber ID: {subscriber_id}')
+
+    elif event_type == 'heartbeat':
+        print(f'Heartbeat: {data["time"]}')
+
+    elif event_type == 'game.movement.jump':
+        print(f'Ship {data["ship_id"]} jumped from {data["from_sector"]} to {data["to_sector"]}')
+        print(f'Fuel consumed: {data["fuel_consumed"]}, Remaining: {data["fuel_remaining"]}')
+
+    elif event_type == 'game.combat.start':
+        print(f'Combat started: {data["combat_id"]}')
+```
+
+---
+
+## Best Practices
+
+### Connection Management
+
+1. **Automatic Reconnection**: `EventSource` handles reconnection automatically
+2. **Heartbeat Monitoring**: Detect stale connections if heartbeats stop for >60 seconds
+3. **Graceful Shutdown**: Close connection when user navigates away
+
+```javascript
+// Close connection when user leaves
+window.addEventListener('beforeunload', () => {
+  eventSource.close();
+});
+```
+
+---
+
+### Channel Subscription Strategy
+
+1. **Start Minimal**: Connect with only essential channels (player channel)
+2. **Add Dynamically**: Subscribe to additional channels as needed (e.g., sector channel when entering sector, combat channel when entering combat)
+3. **Unsubscribe**: Remove channels when no longer needed to reduce bandwidth
+
+---
+
+### Event Handling
+
+1. **Use Event Type Listeners**: Always use `addEventListener(event_type, handler)` instead of generic `onmessage`
+2. **Parse JSON Once**: Cache parsed data, don't re-parse
+3. **Throttle UI Updates**: Debounce rapid events to avoid UI flicker
+4. **Handle Missing Events**: Events may be dropped if buffer is full - design UI to tolerate occasional missing events
+
+---
+
+### Error Handling
+
+1. **Monitor Connection State**: Track `onerror` and heartbeat gaps
+2. **Fallback to Polling**: If SSE fails repeatedly, fall back to HTTP polling
+3. **Log Connection Metrics**: Track disconnects, reconnect duration for debugging
+
+---
+
+## Known Limitations
+
+### Last-Event-ID Replay
+
+**Status**: **NOT IMPLEMENTED** (despite documentation in v1.2)
+
+**Documented Behavior**: SSE supports `Last-Event-ID` header for event replay after reconnection
+
+**Actual Behavior**: Fanout service does NOT store event history or process `Last-Event-ID` header
+
+**Impact**: Reconnecting clients will miss events that occurred during disconnection
+
+**Workaround**: Client must refresh state via HTTP endpoints after reconnection
+
+**Code**: `/services/fanout/internal/broker/broker.go` (no event history storage)
+
+---
+
+### Buffer Overflow
+
+**Buffer Size**: 256 events per subscriber
+
+**Behavior**: If subscriber's event queue fills (slow client, network issues), new events are **dropped**
+
+**Mitigation**: Monitor `events_dropped_total` in `/v1/stream/gameplay/stats`
+
+**Client Impact**: Design UI to tolerate occasional missing events
+
+---
+
+## Summary
+
+This document covers the **Server-Sent Events (SSE)** system for real-time gameplay updates:
+
+1. **SSE Connection**: `/v1/stream/gameplay` (canonical), legacy `/v1/events` still works
+2. **Channel Subscriptions**: Dynamic add/remove with POST endpoints
+3. **Event Types**: 20+ event types covering movement, combat, economy, mining, missions, social, chat
+4. **Event Schemas**: Complete payload formats with field descriptions
+5. **Client Integration**: JavaScript and Python examples
+
+**Critical Corrections from v1.2**:
+- ✅ **Canonical Endpoint**: `/v1/stream/gameplay` (not `/v1/events`)
+- ✅ **Last-Event-ID**: NOT implemented (reconnections start fresh, no event replay)
+- ✅ **Combat Loot Events**: Include `tick` and `npc_type` fields
+- ✅ **Station Service Events**: `fuel_purchase` and `repair` events documented
+
+**Best Practices**:
+- Start with minimal channels, add dynamically
+- Monitor heartbeats for connection health
+- Handle missing events gracefully (buffer overflow)
+- Use event-specific listeners, not generic `onmessage`
+
+**Next Steps**:
+- Read `03B-WORLDSIM.apib` for movement endpoints that trigger events
+- Read `03C-COMBAT.apib` for combat endpoints that trigger events
+- Read `06-APPENDICES.md` for event field dictionary
+
+---
+
+**End of 04-REALTIME-SSE.apib**

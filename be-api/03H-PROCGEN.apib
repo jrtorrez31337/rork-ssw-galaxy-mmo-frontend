@@ -1,0 +1,405 @@
+FORMAT: 1A
+HOST: http://192.168.122.76:8080/v1
+
+# SSW Galaxy MMO - Procedural Generation (vNext 2.0)
+
+**Version**: 2.0 (vNext)
+**Status**: Implementation-Grounded
+**Last Verified**: 2025-12-27
+**Service**: Procgen (Internal Port: 8088)
+
+---
+
+## Document Purpose
+
+This document covers the **Procedural Generation Service**, responsible for:
+- **Sector Generation**: Deterministic sector creation from 3D coordinates
+- **Star Systems**: Procedural star, planet, and station generation
+- **Galaxy Seed**: Fixed seed (42) for consistent universe across all players
+
+**Code**: `/services/procgen/`
+
+**Related Documents**:
+- See `01-OVERVIEW.apib` for global standards
+- See `03B-WORLDSIM.apib` for sector endpoints
+- See `06-APPENDICES.md` for glossary
+
+---
+
+## Procedural Generation Overview
+
+### Deterministic Generation
+
+SSW Galaxy MMO uses **deterministic procedural generation** to create a consistent universe across all players.
+
+**Galaxy Seed**: `42` (fixed constant)
+
+**Determinism Guarantee**: Same coordinates + same seed = identical sector, always
+
+**Benefits**:
+- No need to store every sector in database
+- Infinite explorable universe
+- Consistent experience for all players
+- Lightweight server storage
+
+**Generation Algorithm**:
+1. Hash coordinates (x, y, z) with galaxy seed
+2. Use hash as random seed for sector generation
+3. Generate sector name, type, star system, resources, stations
+4. Return consistent result every time
+
+**Code**: `/services/procgen/internal/generator/sector.go:48-120`
+
+---
+
+## Endpoints
+
+### POST /v1/generate/sector
+
+Generate sector data from 3D coordinates.
+
+**Authentication**: Optional (public endpoint)
+
+**Request Body**:
+```json
+{
+  "x": 5,
+  "y": 2,
+  "z": -3
+}
+```
+
+**Validation Rules**:
+- `x`, `y`, `z` must be integers
+- Range: -2,147,483,648 to 2,147,483,647 (int32)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "coordinates": {"x": 5, "y": 2, "z": -3},
+    "name": "Kepler-442",
+    "sector_type": "inhabited",
+    "faction_control": "terran_federation",
+    "faction_control_percentage": 75.0,
+    "threat_level": 2,
+    "star_system": {
+      "primary_star": {
+        "type": "G5V",
+        "mass": 0.95,
+        "luminosity": 0.85,
+        "temperature": 5500
+      },
+      "planets": [
+        {
+          "name": "Kepler-442b",
+          "type": "terrestrial",
+          "orbit_distance": 1.2,
+          "mass": 1.8,
+          "habitability": 0.75
+        }
+      ],
+      "asteroid_fields": 3,
+      "anomalies": 1
+    },
+    "stations": [
+      {
+        "id": "00000000-0000-0000-0000-000042050203",
+        "name": "Kepler Station",
+        "station_type": "trade",
+        "position": {"x": 1000.0, "y": 500.0, "z": 200.0},
+        "faction_id": "terran_federation",
+        "services": ["market", "refuel", "repair"]
+      }
+    ],
+    "resources": ["iron_ore", "hydrogen", "titanium_ore"],
+    "resource_nodes": [
+      {
+        "resource_type": "iron_ore",
+        "richness": 0.75,
+        "quantity": 5000,
+        "position": {"x": 2500.0, "y": -1200.0, "z": 800.0}
+      }
+    ]
+  }
+}
+```
+
+**Field Descriptions**:
+- `sector_type`: Type of sector (`core`, `frontier`, `nebula`, `void`, `asteroid_belt`, `inhabited`, `hostile`)
+- `faction_control`: Dominant faction ID (null for neutral sectors)
+- `faction_control_percentage`: Faction influence (0-100%)
+- `threat_level`: Combat danger rating (1=safe, 5=extreme)
+- `star_system`: Generated star system data (null for empty sectors)
+- `stations`: List of stations in sector (deterministically placed)
+- `resources`: Available resource types for mining
+- `resource_nodes`: Initial resource node positions (respawn handled by WorldSim)
+
+**Sector Types**:
+| Type | Description | Frequency | Threat Level |
+|------|-------------|-----------|--------------|
+| `core` | Core system with high population | 5% | 1-2 |
+| `inhabited` | Populated system with stations | 15% | 1-3 |
+| `frontier` | Frontier colony, sparse population | 25% | 2-4 |
+| `asteroid_belt` | Rich mining resources | 20% | 2-4 |
+| `nebula` | Gas cloud, high fuel cost | 15% | 3-5 |
+| `void` | Empty space, minimal resources | 15% | 1-2 |
+| `hostile` | Pirate-controlled, high NPC density | 5% | 4-5 |
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid coordinates or request body
+- `GENERATION_ERROR` (500) - Procedural generation failed
+
+**Code**: `/services/procgen/internal/handlers/procgen.go:25-80`
+
+---
+
+### GET /v1/sectors/{x}/{y}/{z}
+
+Get or generate sector by coordinates. Identical to POST /v1/generate/sector but using URL parameters.
+
+**Authentication**: Optional
+
+**URL Parameters**:
+- `x` (required): X coordinate (integer)
+- `y` (required): Y coordinate (integer)
+- `z` (required): Z coordinate (integer)
+
+**Example**: `GET /v1/sectors/0/0/0` (Sol System)
+
+**Response** (200 OK): Same as POST /v1/generate/sector
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid coordinates
+- `GENERATION_ERROR` (500) - Procedural generation failed
+
+**Code**: `/services/procgen/internal/handlers/procgen.go:85-130`
+
+---
+
+## Generation Details
+
+### Sector Names
+
+Sector names are generated using one of these patterns:
+1. **Real Star Names** (for core sectors): "Sol", "Alpha Centauri", "Sirius", etc.
+2. **Kepler Exoplanets** (for inhabited sectors): "Kepler-442", "Kepler-186", etc.
+3. **Greek Letters + Constellations**: "Alpha Draconis", "Beta Aquarii", etc.
+4. **Procedural Names**: "Sector X5Y2Z-3", "Void Region 123", etc.
+
+**Name Determination**: Based on sector hash and sector type
+
+**Code**: `/services/procgen/internal/generator/names.go`
+
+---
+
+### Station Generation
+
+**Station Placement Rules**:
+- Core sectors: 2-4 stations
+- Inhabited sectors: 1-2 stations
+- Frontier sectors: 0-1 stations
+- Other sector types: 0 stations (except special cases)
+
+**Station Types**:
+- `trade`: Market, refuel, repair services
+- `military`: Repair, missions services (faction-specific)
+- `mining`: Refuel, market for resources
+- `research`: Missions, unique items (rare)
+
+**Station IDs**: Deterministically generated from sector coordinates + station index
+- Format: `00000000-0000-0000-0000-SSSSXXXXXXYYYYYY...` (special UUID format)
+- Ensures same station ID for same coordinates every time
+
+**Station Positions**: Randomly placed within sector bounds, but deterministic
+
+---
+
+### Resource Node Generation
+
+**Node Count**: Based on sector type
+- `asteroid_belt`: 10-20 nodes
+- `core`: 3-5 nodes
+- `inhabited`: 5-10 nodes
+- `frontier`: 5-8 nodes
+- `nebula`: 2-5 nodes (gas resources)
+- `void`: 0-2 nodes
+- `hostile`: 5-10 nodes
+
+**Resource Distribution**:
+- Tier 1 resources: 70% of nodes
+- Tier 2 resources: 25% of nodes
+- Tier 3 resources: 5% of nodes
+
+**Node Quality (Richness)**:
+- Poor (0.3-0.5): 20%
+- Average (0.5-0.7): 50%
+- Rich (0.7-0.9): 25%
+- Very Rich (0.9-1.0): 5%
+
+**Note**: Procgen generates initial node positions and types. WorldSim service manages node state (quantity remaining, respawning).
+
+---
+
+### Star System Generation
+
+**Star Types** (by frequency):
+- G-type (Sun-like): 40%
+- K-type (Orange dwarf): 30%
+- M-type (Red dwarf): 20%
+- F-type (Yellow-white): 5%
+- A-type (White): 3%
+- Binary systems: 2%
+
+**Planet Generation**:
+- Planets per system: 0-8 (based on star type)
+- Planet types: `terrestrial`, `gas_giant`, `ice_giant`, `dwarf`, `barren`
+- Habitability score: 0.0 (uninhabitable) to 1.0 (Earth-like)
+
+**Asteroid Fields**: 0-5 fields per system (higher in asteroid_belt sectors)
+
+**Anomalies**: 0-2 anomalies per system (rare, special events)
+- Anomaly types: `wormhole`, `black_hole`, `neutron_star`, `ancient_structure`
+
+---
+
+## Caching and Performance
+
+### Caching Strategy
+
+**Current**: No caching (regenerated on every request)
+
+**Performance**: Generation is fast (~1-5ms per sector), caching not critical
+
+**Future**: May implement LRU cache for frequently-accessed sectors (Sol, major hubs)
+
+---
+
+### Generation Performance
+
+**Average Generation Time**: 1-5ms per sector
+
+**Factors Affecting Speed**:
+- Star system complexity (more planets = longer generation)
+- Number of stations and resource nodes
+- Anomaly calculations
+
+**Optimization**: Generation is single-threaded, deterministic for consistency
+
+---
+
+## Special Sectors
+
+### Sol System (0,0,0)
+
+**Hardcoded Properties**:
+- Name: "Sol System"
+- Sector Type: `core`
+- Threat Level: 1 (safest)
+- Faction: Terran Federation (100% control)
+- Stations: 4 (New Eden Trade Hub, Mars Military Base, etc.)
+- Resources: All Tier 1 resources available
+
+**Code**: `/services/procgen/internal/generator/special_sectors.go`
+
+---
+
+### Other Hardcoded Sectors
+
+**Alpha Centauri (1,0,0)**:
+- Major trade hub
+- 3 stations
+- Threat Level: 1
+
+**Known Faction Capitals**:
+- Coordinates hardcoded for major factions
+- Special station configurations
+- Unique missions and NPCs
+
+**Total Hardcoded Sectors**: ~20 (major systems)
+
+---
+
+## Client Integration
+
+### Example: Generate Sector
+
+```javascript
+// Generate sector data
+const response = await fetch('http://192.168.122.76:8080/v1/generate/sector', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    x: 5,
+    y: 2,
+    z: -3
+  })
+});
+
+const result = await response.json();
+const sector = result.data;
+
+console.log(`Sector: ${sector.name}`);
+console.log(`Type: ${sector.sector_type}`);
+console.log(`Threat Level: ${sector.threat_level}`);
+console.log(`Stations: ${sector.stations.length}`);
+console.log(`Resources: ${sector.resources.join(', ')}`);
+```
+
+---
+
+### Example: Batch Generation
+
+```javascript
+// Generate multiple sectors in parallel
+const coordinates = [
+  {x: 0, y: 0, z: 0},  // Sol
+  {x: 1, y: 0, z: 0},  // Alpha Centauri
+  {x: 2, y: 3, z: -1}  // Random sector
+];
+
+const promises = coordinates.map(coords =>
+  fetch('http://192.168.122.76:8080/v1/generate/sector', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(coords)
+  }).then(r => r.json())
+);
+
+const sectors = await Promise.all(promises);
+
+sectors.forEach(sector => {
+  console.log(`${sector.data.name}: ${sector.data.sector_type}`);
+});
+```
+
+---
+
+## Summary
+
+This document covers the **Procedural Generation Service**:
+
+1. **Deterministic Generation**: Galaxy seed 42, consistent universe
+2. **POST /v1/generate/sector**: Generate sector from coordinates
+3. **GET /v1/sectors/{x}/{y}/{z}**: Alternative endpoint (same behavior)
+4. **Sector Types**: 7 types (core, inhabited, frontier, asteroid_belt, nebula, void, hostile)
+5. **Star Systems**: Procedural stars, planets, asteroid fields, anomalies
+6. **Stations**: Deterministically placed with UUIDs based on coordinates
+7. **Resource Nodes**: Initial positions generated, state managed by WorldSim
+
+**Key Features**:
+- **Infinite Universe**: No pre-generation, sectors created on-demand
+- **Consistency**: Same coordinates always generate same sector
+- **Performance**: 1-5ms generation time
+- **Special Sectors**: ~20 hardcoded major systems (Sol, Alpha Centauri, faction capitals)
+
+**Next Steps**:
+- Read `03B-WORLDSIM.apib` for sector state and resource node management
+- Read `06-APPENDICES.md` for resource types and sector glossary
+- Read `03F-SOCIAL.apib` for faction information
+
+---
+
+**End of 03H-PROCGEN.apib**

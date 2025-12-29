@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Plus, Shield, LogOut } from 'lucide-react-native';
+import { User, Plus, Shield, LogOut, Flag } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { TopBar, Text, Button, CharacterCard, EmptyState, Spinner, BottomSheet, Divider, CharacterCardSkeleton } from '@/ui';
 import { tokens } from '@/ui/theme';
@@ -16,13 +16,15 @@ import { ReputationCardSkeleton } from '@/components/reputation/ReputationCardSk
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useReputationEvents } from '@/hooks/useReputationEvents';
 import { getFactionName } from '@/components/reputation/utils';
-import type { ReputationTierChangeEvent } from '@/types/api';
+import { CharacterEditPanel } from '@/components/character/CharacterEditPanel';
+import type { ReputationTierChangeEvent, Character } from '@/types/api';
 
 export default function MeTab() {
   const router = useRouter();
   const { user, profileId, logout } = useAuth();
   const [selectedFactionId, setSelectedFactionId] = useState<string | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
 
   const { data: ships } = useQuery({
     queryKey: ['ships', profileId],
@@ -139,7 +141,11 @@ export default function MeTab() {
                 ) : characters && characters.length > 0 ? (
                   <View style={styles.cardList}>
                     {characters.map((character) => (
-                      <CharacterCard key={character.id} character={character} />
+                      <CharacterCard
+                        key={character.id}
+                        character={character}
+                        onEdit={setEditingCharacter}
+                      />
                     ))}
                   </View>
                 ) : (
@@ -168,6 +174,14 @@ export default function MeTab() {
                       Faction Reputation
                     </Text>
                   </View>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={Flag}
+                    onPress={() => router.push('/factions')}
+                  >
+                    All Factions
+                  </Button>
                 </View>
 
                 {loadingReputations ? (
@@ -212,6 +226,15 @@ export default function MeTab() {
             isLoading={loadingHistory}
           />
         </BottomSheet>
+      )}
+
+      {/* Character Edit Panel */}
+      {editingCharacter && (
+        <CharacterEditPanel
+          character={editingCharacter}
+          visible={!!editingCharacter}
+          onClose={() => setEditingCharacter(null)}
+        />
       )}
     </SafeAreaView>
     </ErrorBoundary>

@@ -18,7 +18,7 @@ export default function TradeHistory({
   const { data, isLoading, error } = useQuery({
     queryKey: ['trades', marketId, commodity],
     queryFn: () => economyApi.getTradeHistory(marketId, commodity, limit),
-    refetchInterval: 10000, // Refresh every 10 seconds
+    // Real-time updates via SSE - useTradingEvents hook invalidates this query on trade events
     enabled: !!marketId && !!commodity,
   });
 

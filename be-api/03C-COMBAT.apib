@@ -1,0 +1,791 @@
+FORMAT: 1A
+HOST: http://192.168.122.76:8080/v1
+
+# SSW Galaxy MMO - Combat System (vNext 2.0)
+
+**Version**: 2.0 (vNext)
+**Status**: Implementation-Grounded
+**Last Verified**: 2025-12-27
+**Service**: Combat (Internal Port: 8083)
+
+---
+
+## Document Purpose
+
+This document covers the **Combat Service**, responsible for:
+- **Combat Instances**: Turn-based combat between players and NPCs
+- **Loot System**: Procedural loot generation from defeated NPCs
+- **NPC Ships**: 3 NPC types with distinct loot tables and behaviors
+- **UDP Framework**: High-performance combat telemetry (framework only)
+
+**Code**: `/services/combat/`
+
+**Related Documents**:
+- See `01-OVERVIEW.apib` for global standards
+- See `04-REALTIME-SSE.apib` for combat event subscriptions
+- See `06-APPENDICES.md` for NPC loot tables and error codes
+
+---
+
+## Combat Overview
+
+### Combat Model
+
+SSW Galaxy MMO uses a **turn-based tick system** for combat:
+- Combat instances run in discrete ticks (server-controlled timing)
+- Each tick processes damage calculations, death checks, and loot distribution
+- Combat ends when all participants on one team are destroyed
+
+**Combat Types**:
+- **Player vs NPC**: Player attacks NPC ships (pirate, trader, patrol)
+- **Player vs Player**: Not yet implemented (framework exists)
+
+**Team System**:
+- Team 1 vs Team 2
+- All participants assigned to a team
+- Participants attack enemies on opposite team
+
+---
+
+### NPC Types
+
+| NPC Type | Behavior | Credits | Common Drops | Threat Level |
+|----------|----------|---------|--------------|--------------|
+| `pirate` | Aggressive | 50-200 | Iron ore (80%), weapons (30%) | Medium |
+| `trader` | Passive | 100-500 | Luxury (60%), organic (50%) | Low |
+| `patrol` | Defensive | 30-150 | Weapons (50%), electronics (40%) | Medium |
+
+**NPC Spawning**:
+- NPCs spawn in designated sectors with patrol routes
+- Respawn after 5 minutes when destroyed
+- Faction-aligned (pirates vs traders vs patrols)
+
+**Code**: `/migrations/012_add_npc_loot_system.up.sql:6-20`
+
+---
+
+### Loot System
+
+**Loot Distribution**:
+1. When NPC is destroyed, loot table is consulted by `npc_type`
+2. Credits rolled randomly in range (e.g., pirate: 50-200 credits)
+3. Each resource entry rolled based on `drop_chance` (0.000-1.000)
+4. Quantity rolled uniformly in range (e.g., 10-30 iron ore)
+5. Quality rolled using Gaussian distribution (mean ± stddev, clamped to 0.50-2.00)
+6. Credits and resources added to player's account/inventory
+
+**Quality System**: Matches mining quality system (0.50-2.00 range, Gaussian distribution)
+
+**Code**: `/services/combat/internal/loot/resolver.go:40-101`
+
+---
+
+### UDP Combat Framework (Planned)
+
+**Status**: Framework exists but not fully implemented
+
+**Purpose**: High-performance real-time combat telemetry
+- UDP port: 7777
+- Token-based authentication for combat instances
+- Fallback mode: SSE-only (current default)
+
+**UDP Server**: Started on combat service startup (line 149 of main.go)
+
+**Client Assignment**: Clients receive `udp_endpoint` and `udp_token` when joining combat, but currently use SSE fallback
+
+**Code**: `/services/combat/cmd/main.go:149` (UDP server initialization)
+
+---
+
+## Endpoints
+
+### POST /combat/initiate
+
+Initiate combat with a target (player or NPC).
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "initiator_id": "player-uuid-1",
+  "initiator_ship_id": "ship-uuid-1",
+  "target_id": "npc-ship-uuid-1",
+  "sector_id": "0,0,0"
+}
+```
+
+**Validation Rules**:
+- `initiator_id`: Must match authenticated profile ID
+- `initiator_ship_id`: Must be owned by initiator
+- `target_id`: Must be valid player or NPC ship ID in same sector
+- `sector_id`: Must match current sector of both ships
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "combat_id": "combat-uuid-1",
+    "status": "active",
+    "assignment": {
+      "combat_id": "combat-uuid-1",
+      "instance_region": "local",
+      "udp_endpoint": "localhost:7777",
+      "udp_token": "token-abc123",
+      "fallback_mode": "sse_only"
+    }
+  }
+}
+```
+
+**Field Descriptions**:
+- `combat_id`: Unique ID for this combat instance
+- `status`: Combat status (`active`, `completed`)
+- `assignment`: Connection details for combat instance
+  - `instance_region`: Region where combat is running (for geographic load balancing)
+  - `udp_endpoint`: UDP server address (framework only, not used)
+  - `udp_token`: Authentication token for UDP connection
+  - `fallback_mode`: Current mode (`sse_only` - use SSE for events, not UDP)
+
+**Effects**:
+- Creates combat instance in Redis
+- Adds initiator and target as participants (team 1 vs team 2)
+- Publishes `game.combat.start` event via NATS
+- Combat begins processing ticks
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body or missing fields
+- `NOT_FOUND` (404) - Target ship does not exist
+- `SHIP_NOT_IN_SECTOR` (400) - Ships not in same sector
+- `ALREADY_IN_COMBAT` (409) - Ship already in combat
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/combat/internal/handlers/combat.go:26-84`
+
+---
+
+### GET /combat/{combat_id}
+
+Get details of a combat instance.
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `combat_id` (required): Combat instance UUID
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "id": "combat-uuid-1",
+    "status": "active",
+    "region": "local",
+    "sector_id": "0,0,0",
+    "started_at": "2025-12-27T12:34:56.123456Z",
+    "current_tick": 42,
+    "participants": [
+      {
+        "player_id": "player-uuid-1",
+        "ship_id": "ship-uuid-1",
+        "team": 1,
+        "hull": 85.5,
+        "hull_max": 100.0,
+        "shield": 50.0,
+        "shield_max": 100.0,
+        "is_alive": true
+      },
+      {
+        "player_id": "npc-pirate-1",
+        "ship_id": "npc-ship-uuid-1",
+        "team": 2,
+        "hull": 20.0,
+        "hull_max": 100.0,
+        "shield": 0.0,
+        "shield_max": 100.0,
+        "is_alive": true
+      }
+    ]
+  }
+}
+```
+
+**Field Descriptions**:
+- `current_tick`: Current combat tick number (increments each tick)
+- `participants`: List of all participants in combat
+  - `hull`: Current hull HP (0-hull_max)
+  - `shield`: Current shield HP (0-shield_max)
+  - `is_alive`: Whether participant is still alive
+
+**Error Codes**:
+- `COMBAT_NOT_FOUND` (404) - Combat instance does not exist
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/combat/internal/handlers/combat.go:86-128`
+
+---
+
+### POST /combat/{combat_id}/join
+
+Join an ongoing combat instance (reinforcements).
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `combat_id` (required): Combat instance UUID
+
+**Request Body**:
+```json
+{
+  "player_id": "player-uuid-2",
+  "ship_id": "ship-uuid-2",
+  "team": 1
+}
+```
+
+**Validation Rules**:
+- `player_id`: Must match authenticated profile ID
+- `ship_id`: Must be owned by player
+- `team`: Must be 1 or 2
+- Ship must be in same sector as combat instance
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "assignment": {
+      "combat_id": "combat-uuid-1",
+      "instance_region": "local",
+      "udp_endpoint": "localhost:7777",
+      "udp_token": "token-def456",
+      "fallback_mode": "sse_only"
+    }
+  }
+}
+```
+
+**Effects**:
+- Adds participant to combat instance
+- Issues UDP token (not used in sse_only mode)
+- Publishes `game.combat.join` event
+
+**Error Codes**:
+- `COMBAT_NOT_FOUND` (404) - Combat instance does not exist
+- `VALIDATION_ERROR` (400) - Invalid request body
+- `SHIP_NOT_IN_SECTOR` (400) - Ship not in combat sector
+- `ALREADY_IN_COMBAT` (409) - Ship already in combat
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/combat/internal/handlers/combat.go:130-169`
+
+---
+
+### POST /combat/{combat_id}/leave
+
+Leave a combat instance (flee/retreat).
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `combat_id` (required): Combat instance UUID
+
+**Request Body**:
+```json
+{
+  "player_id": "player-uuid-1",
+  "reason": "flee"
+}
+```
+
+**Validation Rules**:
+- `player_id`: Must match authenticated profile ID
+- `reason`: Optional (e.g., "flee", "retreat", "disconnect")
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true
+  }
+}
+```
+
+**Effects**:
+- Removes participant from combat instance
+- Ship becomes vulnerable for 30 seconds (combat cooldown)
+- Publishes `game.combat.leave` event
+- If all participants on one team leave, combat ends
+
+**Error Codes**:
+- `COMBAT_NOT_FOUND` (404) - Combat instance does not exist
+- `VALIDATION_ERROR` (400) - Player not in combat
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/combat/internal/handlers/combat.go:171-200`
+
+---
+
+### GET /combat/history
+
+Get combat history for a player.
+
+**Authentication**: Required
+
+**Query Parameters**:
+- `player_id` (required): Profile UUID
+- `limit` (optional): Number of entries (default: 20, max: 100)
+- `offset` (optional): Pagination offset (default: 0)
+
+**Response** (200 OK):
+```json
+{
+  "data": [
+    {
+      "combat_id": "combat-uuid-1",
+      "sector_id": "0,0,0",
+      "outcome": "victory",
+      "started_at": "2025-12-27T12:30:00Z",
+      "ended_at": "2025-12-27T12:35:23Z",
+      "duration_seconds": 323,
+      "team": 1,
+      "enemies_destroyed": 1,
+      "damage_dealt": 150.5,
+      "damage_taken": 45.0,
+      "loot_credits": 125,
+      "loot_resources": [
+        {
+          "resource_type": "iron_ore",
+          "quantity": 23,
+          "quality": 0.85
+        }
+      ]
+    }
+  ],
+  "total": 15,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+**Field Descriptions**:
+- `outcome`: Combat result (`victory`, `defeat`, `fled`, `draw`)
+- `duration_seconds`: How long combat lasted
+- `enemies_destroyed`: Number of enemies destroyed by this player
+- `loot_credits`: Total credits earned from combat
+- `loot_resources`: Resources looted from NPCs
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Missing or invalid player_id
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Note**: Current implementation returns empty array (history persistence not yet implemented)
+
+**Code**: `/services/combat/internal/handlers/combat.go:202-218`
+
+---
+
+## Combat Mechanics
+
+### Damage Calculation
+
+**Damage Per Tick**: 10.0 base damage (simplified system)
+
+**Damage Application**:
+1. Damage applied to shields first
+2. If shields depleted, overflow damage goes to hull
+3. If hull reaches 0, participant is destroyed
+
+**Targeting**: Each alive participant attacks a random enemy on opposite team each tick
+
+**Code**: `/services/combat/internal/instance/manager.go:223-295`
+
+---
+
+### Death and Loot
+
+**On Participant Death**:
+1. `is_alive` set to false
+2. If NPC, loot is rolled and distributed to attacker
+3. `game.combat.loot` event published with rewards
+4. Ship marked as destroyed (respawn logic handled by WorldSim)
+
+**Loot Rolling Process**:
+1. Query `loot_tables` by `npc_type` (pirate, trader, patrol)
+2. Roll credits: `random(credits_min, credits_max)`
+3. For each `loot_table_entries` row:
+   - Roll `random(0.0, 1.0)`
+   - If roll ≤ `drop_chance`, drop succeeded
+   - Roll quantity: `random(quantity_min, quantity_max)`
+   - Roll quality: Gaussian(`quality_mean`, `quality_stddev`), clamped to [0.50, 2.00]
+4. Add credits to player's account
+5. Add resources to player's inventory
+
+**Code**: `/services/combat/internal/loot/resolver.go:40-136`
+
+---
+
+### Combat End Conditions
+
+Combat ends when ANY of these conditions are met:
+1. **Victory**: All participants on one team are destroyed
+2. **Flee**: All participants on one team leave voluntarily
+3. **Timeout**: Combat exceeds maximum duration (30 minutes)
+
+**End Combat Process**:
+1. Set instance status to `completed`
+2. Publish `game.combat.end` event with outcome
+3. Remove instance from Redis after 5 minutes (for history queries)
+4. Remove combat cooldown from surviving ships
+
+---
+
+## Real-Time Combat Events
+
+Combat state is broadcast in real-time via SSE. See `04-REALTIME-SSE.apib` for subscription details.
+
+**Event Channel**: `combat.instance.{combat_id}`
+
+---
+
+### Event: game.combat.start
+
+Published when combat is initiated.
+
+**Event Payload**:
+```json
+{
+  "combat_id": "combat-uuid-1",
+  "sector_id": "0,0,0",
+  "region": "local",
+  "started_at": 1735310400,
+  "participants": [
+    {
+      "player_id": "player-uuid-1",
+      "ship_id": "ship-uuid-1",
+      "team": 1
+    },
+    {
+      "player_id": "npc-pirate-1",
+      "ship_id": "npc-ship-uuid-1",
+      "team": 2,
+      "owner_type": "npc",
+      "npc_type": "pirate"
+    }
+  ]
+}
+```
+
+---
+
+### Event: game.combat.tick
+
+Published each combat tick (damage calculations).
+
+**Event Payload**:
+```json
+{
+  "combat_id": "combat-uuid-1",
+  "tick": 42,
+  "actions": [
+    {
+      "attacker_id": "player-uuid-1",
+      "target_id": "npc-pirate-1",
+      "damage": 10.0,
+      "hit_type": "shield"
+    }
+  ],
+  "participants": [
+    {
+      "player_id": "player-uuid-1",
+      "hull": 85.5,
+      "shield": 50.0,
+      "is_alive": true
+    },
+    {
+      "player_id": "npc-pirate-1",
+      "hull": 20.0,
+      "shield": 0.0,
+      "is_alive": true
+    }
+  ],
+  "timestamp": 1735310450
+}
+```
+
+**Field Descriptions**:
+- `tick`: Current tick number
+- `actions`: List of attacks that occurred this tick
+  - `hit_type`: Where damage was applied (`shield` or `hull`)
+- `participants`: Current state of all participants after tick
+
+---
+
+### Event: game.combat.loot
+
+Published when NPC is destroyed and loot is awarded.
+
+**Event Payload**:
+```json
+{
+  "combat_id": "combat-uuid-1",
+  "tick": 58,
+  "killer_id": "player-uuid-1",
+  "victim_id": "npc-pirate-1",
+  "npc_type": "pirate",
+  "loot": {
+    "credits": 125,
+    "resources": [
+      {
+        "resource_type": "iron_ore",
+        "quantity": 23,
+        "quality": 0.85
+      },
+      {
+        "resource_type": "weapons",
+        "quantity": 2,
+        "quality": 1.15
+      }
+    ]
+  },
+  "timestamp": 1735310466
+}
+```
+
+**Note**: Loot is automatically added to player's account/inventory by combat service
+
+---
+
+### Event: game.combat.end
+
+Published when combat ends.
+
+**Event Payload**:
+```json
+{
+  "combat_id": "combat-uuid-1",
+  "outcome": "victory",
+  "winning_team": 1,
+  "duration_seconds": 323,
+  "total_ticks": 58,
+  "survivors": [
+    {
+      "player_id": "player-uuid-1",
+      "hull": 65.0,
+      "shield": 30.0
+    }
+  ],
+  "timestamp": 1735310723
+}
+```
+
+**Field Descriptions**:
+- `outcome`: Combat result (`victory`, `flee`, `timeout`)
+- `winning_team`: Team that won (1 or 2, null for draw)
+- `survivors`: Participants still alive when combat ended
+
+---
+
+## NPC Loot Tables
+
+### Pirate Loot Table
+
+**Credits**: 50-200 (random)
+
+**Resources**:
+| Resource | Drop Chance | Quantity | Quality (mean ± stddev) |
+|----------|-------------|----------|-------------------------|
+| `iron_ore` | 80% | 10-30 | 0.80 ± 0.15 |
+| `weapons` | 30% | 1-3 | 1.20 ± 0.20 |
+| `electronics` | 20% | 1-2 | 1.00 ± 0.15 |
+
+**Behavior**: Aggressive (attacks on sight)
+
+**Typical Spawn Sectors**: Frontier, hostile, asteroid belt
+
+---
+
+### Trader Loot Table
+
+**Credits**: 100-500 (random)
+
+**Resources**:
+| Resource | Drop Chance | Quantity | Quality (mean ± stddev) |
+|----------|-------------|----------|-------------------------|
+| `luxury` | 60% | 5-15 | 1.50 ± 0.25 |
+| `organic` | 50% | 10-30 | 1.20 ± 0.20 |
+| `electronics` | 40% | 5-10 | 1.30 ± 0.18 |
+
+**Behavior**: Passive (flees when attacked)
+
+**Typical Spawn Sectors**: Core, inhabited, frontier
+
+---
+
+### Patrol Loot Table
+
+**Credits**: 30-150 (random)
+
+**Resources**:
+| Resource | Drop Chance | Quantity | Quality (mean ± stddev) |
+|----------|-------------|----------|-------------------------|
+| `weapons` | 50% | 1-2 | 1.10 ± 0.15 |
+| `electronics` | 40% | 2-5 | 1.00 ± 0.12 |
+| `iron_ore` | 30% | 5-15 | 0.90 ± 0.10 |
+
+**Behavior**: Defensive (attacks pirates, protects traders)
+
+**Typical Spawn Sectors**: Core, inhabited (faction-aligned)
+
+---
+
+**Code**: `/migrations/012_add_npc_loot_system.up.sql:55-83`
+
+---
+
+## Quality Distribution
+
+Loot quality follows the **same Gaussian distribution as mining** (0.50-2.00 range).
+
+**Quality Formula**:
+```
+quality = Gaussian(quality_mean, quality_stddev)
+Clamped to [0.50, 2.00]
+```
+
+**Example**: Pirate weapons (mean=1.20, stddev=0.20)
+- ~68% of drops will be 1.00-1.40 quality
+- ~95% of drops will be 0.80-1.60 quality
+- Rare drops can reach 2.00 quality (exceptional)
+- No drops below 0.50 quality (junk threshold)
+
+**Code**: `/services/combat/internal/loot/resolver.go:111-136`
+
+---
+
+## Client Integration
+
+### Example: Initiate Combat with NPC
+
+```javascript
+// Initiate combat with pirate NPC
+const response = await fetch('http://192.168.122.76:8080/v1/combat/initiate', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ' + accessToken,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    initiator_id: currentPlayerId,
+    initiator_ship_id: currentShipId,
+    target_id: 'npc-pirate-uuid',
+    sector_id: '0,0,0'
+  })
+});
+
+const result = await response.json();
+const combatId = result.data.combat_id;
+
+console.log(`Combat started: ${combatId}`);
+console.log(`Fallback mode: ${result.data.assignment.fallback_mode}`);
+
+// Subscribe to combat events via SSE
+const eventSource = new EventSource(
+  `http://192.168.122.76:8080/v1/stream/gameplay?channels=combat.instance.${combatId}`,
+  {
+    headers: {
+      'Authorization': 'Bearer ' + accessToken
+    }
+  }
+);
+
+eventSource.addEventListener('game.combat.tick', (e) => {
+  const data = JSON.parse(e.data);
+  console.log(`Tick ${data.tick}: ${data.actions.length} actions`);
+
+  // Update combat UI with current participant states
+  updateCombatUI(data.participants);
+});
+
+eventSource.addEventListener('game.combat.loot', (e) => {
+  const data = JSON.parse(e.data);
+  console.log(`Loot dropped from ${data.npc_type}!`);
+  console.log(`Credits: ${data.loot.credits}`);
+  console.log(`Resources: ${data.loot.resources.length} items`);
+
+  // Show loot notification
+  showLootNotification(data.loot);
+});
+
+eventSource.addEventListener('game.combat.end', (e) => {
+  const data = JSON.parse(e.data);
+  console.log(`Combat ended: ${data.outcome}`);
+  console.log(`Duration: ${data.duration_seconds}s`);
+
+  // Close SSE connection
+  eventSource.close();
+
+  // Show combat results
+  showCombatResults(data);
+});
+```
+
+---
+
+### Example: Get Combat History
+
+```javascript
+// Get player's combat history
+const response = await fetch(
+  `http://192.168.122.76:8080/v1/combat/history?player_id=${playerId}&limit=10`,
+  {
+    headers: {
+      'Authorization': 'Bearer ' + accessToken
+    }
+  }
+);
+
+const result = await response.json();
+
+console.log(`Total combats: ${result.total}`);
+
+result.data.forEach(combat => {
+  console.log(`${combat.started_at}: ${combat.outcome} in ${combat.duration_seconds}s`);
+  console.log(`  Enemies destroyed: ${combat.enemies_destroyed}`);
+  console.log(`  Loot: ${combat.loot_credits} credits, ${combat.loot_resources.length} resources`);
+});
+```
+
+---
+
+## Summary
+
+This document covers the **Combat Service**:
+
+1. **POST /combat/initiate**: Start combat with target (player or NPC)
+2. **GET /combat/{combat_id}**: Get combat instance details
+3. **POST /combat/{combat_id}/join**: Join ongoing combat (reinforcements)
+4. **POST /combat/{combat_id}/leave**: Leave combat (flee)
+5. **GET /combat/history**: Get player's combat history
+
+**Key Features**:
+- **Turn-Based Combat**: Tick-based damage system
+- **NPC Types**: 3 types (pirate, trader, patrol) with distinct loot tables
+- **Loot System**: Gaussian quality distribution (0.50-2.00), automatic reward distribution
+- **Team Combat**: Team 1 vs Team 2
+- **Real-Time Events**: SSE broadcasts for tick, loot, end
+- **UDP Framework**: High-performance telemetry (framework only, SSE fallback)
+
+**NPC Loot Tables**:
+- **Pirate**: 50-200 credits, iron ore (80%), weapons (30%), electronics (20%)
+- **Trader**: 100-500 credits, luxury (60%), organic (50%), electronics (40%)
+- **Patrol**: 30-150 credits, weapons (50%), electronics (40%), iron ore (30%)
+
+**Next Steps**:
+- Read `04-REALTIME-SSE.apib` for combat event subscriptions
+- Read `06-APPENDICES.md` for complete NPC loot table reference
+- Read `03B-WORLDSIM.apib` for ship movement and sector mechanics
+
+---
+
+**End of 03C-COMBAT.apib**

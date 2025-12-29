@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '@/contexts/AuthContext';
+import NotificationProvider from '@/components/notifications/NotificationProvider';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -36,6 +37,7 @@ function RootLayoutNav() {
       <Stack.Screen name="mining" />
       <Stack.Screen name="missions" />
       <Stack.Screen name="sector" />
+      <Stack.Screen name="factions" />
     </Stack>
   );
 }
@@ -50,7 +52,9 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <AuthProvider>
-            <RootLayoutNav />
+            <NotificationProvider>
+              <RootLayoutNav />
+            </NotificationProvider>
           </AuthProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

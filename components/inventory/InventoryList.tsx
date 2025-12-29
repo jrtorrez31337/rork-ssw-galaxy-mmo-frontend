@@ -5,7 +5,7 @@ import { Text, EmptyState, Button } from '@/ui';
 import { tokens } from '@/ui/theme';
 import ResourceItem from './ResourceItem';
 import CargoCapacityBar from './CargoCapacityBar';
-import TransferModal from './TransferModal';
+import TransferPanel from './TransferPanel';
 import type { InventoryItem } from '@/api/inventory';
 
 interface InventoryListProps {
@@ -84,9 +84,9 @@ const InventoryList = React.memo(function InventoryList({ shipId, items, used, c
         </>
       )}
 
-      {/* Transfer Modal */}
+      {/* Transfer Panel */}
       {selectedItem && (
-        <TransferModal
+        <TransferPanel
           visible={showTransferModal}
           sourceId={shipId}
           sourceType="ship"

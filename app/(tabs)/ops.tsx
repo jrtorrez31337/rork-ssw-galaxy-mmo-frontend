@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollText, Target, TrendingUp, Pickaxe, Radar, Anchor } from 'lucide-react-native';
+import { ScrollText, Target, TrendingUp, Pickaxe, Radar, Anchor, Warehouse } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { TopBar, Text, Button, EmptyState, Card, Divider } from '@/ui';
 import { tokens } from '@/ui/theme';
@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
 import ActiveMissionTracker from '@/components/missions/ActiveMissionTracker';
 import MissionDetailModal from '@/components/missions/MissionDetailModal';
+import { StationInventoryPanel } from '@/components/inventory/StationInventoryPanel';
 import { useMissionEvents } from '@/hooks/useMissionEvents';
 import { useMissionStore } from '@/stores/missionStore';
 
@@ -17,6 +18,7 @@ export default function OpsTab() {
   const router = useRouter();
   const { user, profileId } = useAuth();
   const [missionDetailVisible, setMissionDetailVisible] = useState(false);
+  const [storageVisible, setStorageVisible] = useState(false);
 
   const {
     activeMissions,
@@ -166,6 +168,20 @@ export default function OpsTab() {
                 </View>
               </Card>
             </View>
+
+            <View style={styles.actionGrid}>
+              <Card variant="default" padding={4} onPress={() => setStorageVisible(true)}>
+                <View style={styles.actionCard}>
+                  <Warehouse size={32} color={tokens.colors.primary.main} />
+                  <Text variant="body" weight="semibold" align="center">
+                    Storage
+                  </Text>
+                  <Text variant="caption" color={tokens.colors.text.secondary} align="center">
+                    Manage cargo
+                  </Text>
+                </View>
+              </Card>
+            </View>
           </View>
         ) : (
           // Quick Actions (when in space)
@@ -229,6 +245,17 @@ export default function OpsTab() {
         }}
         onAbandon={handleAbandonMission}
       />
+
+      {/* Station Storage Panel */}
+      {currentShip && currentShip.docked_at && (
+        <StationInventoryPanel
+          visible={storageVisible}
+          onClose={() => setStorageVisible(false)}
+          ship={currentShip}
+          stationId={currentShip.docked_at}
+          stationName={currentShip.docked_at}
+        />
+      )}
     </SafeAreaView>
   );
 }

@@ -1,4 +1,5 @@
 import EventSource from 'react-native-sse';
+import { AppState, AppStateStatus } from 'react-native';
 import { config } from '@/constants/config';
 import { storage } from '@/utils/storage';
 
@@ -12,6 +13,10 @@ type EventListener = (data: any) => void;
  * - All events multiplexed through single connection
  * - Channel subscriptions managed via POST /v1/stream/gameplay/subscribe
  * - Connection cleaned up on logout
+ *
+ * Handles iOS app lifecycle:
+ * - Closes connection when app goes to background (iOS suspends connections)
+ * - Reconnects immediately when app returns to foreground
  */
 class SSEManager {
   private eventSource: any | null = null;
@@ -23,6 +28,61 @@ class SSEManager {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
   private reconnectDelay: number = 1000;
+  private appState: AppStateStatus = 'active';
+  private appStateSubscription: any = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private isBackgrounded: boolean = false;
+
+  constructor() {
+    this.setupAppStateListener();
+  }
+
+  /**
+   * Setup listener for app state changes (background/foreground)
+   * iOS suspends network connections when backgrounded
+   */
+  private setupAppStateListener(): void {
+    this.appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      const wasBackgrounded = this.appState === 'background' || this.appState === 'inactive';
+      const isNowActive = nextAppState === 'active';
+      const isGoingBackground = nextAppState === 'background' || nextAppState === 'inactive';
+
+      this.appState = nextAppState;
+
+      if (isGoingBackground && !this.isBackgrounded) {
+        // App going to background - close connection cleanly
+        this.isBackgrounded = true;
+        console.log('[SSE Manager] App backgrounded - closing connection');
+        this.closeConnection();
+      } else if (wasBackgrounded && isNowActive && this.isBackgrounded) {
+        // App returning to foreground - reconnect
+        this.isBackgrounded = false;
+        console.log('[SSE Manager] App foregrounded - reconnecting');
+        this.reconnectAttempts = 0; // Reset attempts on foreground
+        if (this.playerId) {
+          this.connect(this.playerId);
+        }
+      }
+    });
+  }
+
+  /**
+   * Close the EventSource connection without full disconnect
+   * (preserves playerId and listeners for reconnection)
+   */
+  private closeConnection(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+    this.isConnected = false;
+    this.isConnecting = false;
+    this.subscriberId = null;
+  }
 
   /**
    * Connect to the SSE stream
@@ -49,11 +109,15 @@ class SSEManager {
 
       // Connect through Gateway (not directly to Fanout)
       // Bug #3 fix: Use config.FANOUT_URL which points to Gateway
+      // Per SSE-STREAMING-FIX.md: Include X-Player-ID header (required) and initial channels
+      const initialChannels = `player.${playerId}`;
       this.eventSource = new EventSource(
-        `${config.FANOUT_URL}/v1/stream/gameplay`,
+        `${config.FANOUT_URL}/v1/stream/gameplay?channels=${initialChannels}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            'X-Player-ID': playerId,
+            'Accept': 'text/event-stream',
           },
         }
       );
@@ -111,7 +175,18 @@ class SSEManager {
       });
 
       this.eventSource.addEventListener('error', (error: any) => {
-        console.error('[SSE Manager] Connection error:', error);
+        // Don't log as error if app is backgrounded - this is expected on iOS
+        if (this.isBackgrounded) {
+          console.log('[SSE Manager] Connection closed (app backgrounded)');
+          return;
+        }
+        // "Network connection was lost" is common and expected, log as warning
+        const isNetworkLost = error?.message?.includes('network connection was lost');
+        if (isNetworkLost) {
+          console.warn('[SSE Manager] Network connection lost, will attempt reconnect');
+        } else {
+          console.error('[SSE Manager] Connection error:', error);
+        }
         this.handleError(error);
       });
 
@@ -123,8 +198,15 @@ class SSEManager {
   }
 
   /**
-   * Subscribe to all relevant channels for the player
-   * Per API spec (04-REALTIME-SSE.apib:169-194), requires subscriber_id from 'connected' event
+   * Subscribe to additional channels after connection
+   * Per SSE-STREAMING-FIX.md: Channel patterns are:
+   * - player.<player-id>: Personal events (already subscribed via initial URL)
+   * - sector.<sector-name>: Sector activity (subscribe dynamically)
+   * - market.<market-id>: Market updates (subscribe dynamically)
+   * - combat.<instance-id>: Combat events (subscribe dynamically)
+   * - chat.<channel-name>: Chat messages (subscribe dynamically)
+   *
+   * Note: game.* events are BROADCAST to all subscribers automatically
    */
   private async subscribeToChannels(): Promise<void> {
     if (!this.playerId || !this.subscriberId) {
@@ -132,12 +214,89 @@ class SSEManager {
       return;
     }
 
+    // Player channel is already subscribed via initial connection URL
+    // game.* events are broadcast to all subscribers - no explicit subscription needed
+    console.log('[SSE Manager] Connected with player channel. Game events are broadcast automatically.');
+  }
+
+  /**
+   * Subscribe to a specific sector channel (call when entering a sector)
+   */
+  async subscribeToSector(sectorId: string): Promise<void> {
+    await this.subscribeToChannel(`sector.${sectorId}`);
+  }
+
+  /**
+   * Subscribe to a specific market channel
+   */
+  async subscribeToMarket(marketId: string): Promise<void> {
+    await this.subscribeToChannel(`market.${marketId}`);
+  }
+
+  /**
+   * Subscribe to a combat instance channel
+   */
+  async subscribeToCombat(combatId: string): Promise<void> {
+    await this.subscribeToChannel(`combat.${combatId}`);
+  }
+
+  /**
+   * Subscribe to a chat channel
+   */
+  async subscribeToChat(channelName: string): Promise<void> {
+    await this.subscribeToChannel(`chat.${channelName}`);
+  }
+
+  /**
+   * Unsubscribe from a channel
+   */
+  async unsubscribeFromChannel(channel: string): Promise<void> {
+    if (!this.subscriberId) {
+      console.log('[SSE Manager] Cannot unsubscribe: no subscriberId');
+      return;
+    }
+
     try {
       const accessToken = await storage.getAccessToken();
       if (!accessToken) return;
 
-      // Subscribe to all game channels through Gateway
-      // Per API spec: subscriber_id is required in body
+      const response = await fetch(
+        `${config.FANOUT_URL}/v1/stream/gameplay/unsubscribe`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            subscriber_id: this.subscriberId,
+            channels: [channel],
+          }),
+        }
+      );
+
+      if (response.ok) {
+        console.log(`[SSE Manager] Unsubscribed from: ${channel}`);
+      }
+    } catch (error) {
+      console.log('[SSE Manager] Unsubscribe error:', (error as Error).message);
+    }
+  }
+
+  /**
+   * Subscribe to a specific channel via POST /v1/stream/gameplay/subscribe
+   * Per SSE-STREAMING-FIX.md
+   */
+  private async subscribeToChannel(channel: string): Promise<void> {
+    if (!this.subscriberId) {
+      console.log('[SSE Manager] Cannot subscribe: no subscriberId');
+      return;
+    }
+
+    try {
+      const accessToken = await storage.getAccessToken();
+      if (!accessToken) return;
+
       const response = await fetch(
         `${config.FANOUT_URL}/v1/stream/gameplay/subscribe`,
         {
@@ -147,45 +306,20 @@ class SSEManager {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            subscriber_id: this.subscriberId,  // Required per API spec
-            channels: [
-              `player.${this.playerId}`,       // Personal notifications
-              'game.movement.jump',            // Movement events
-              'game.movement.dock',
-              'game.movement.undock',
-              'game.travel.started',           // Async travel events
-              'game.travel.completed',
-              'game.travel.cancelled',
-              'game.travel.interrupted',
-              'game.combat.start',             // Combat events
-              'game.combat.action',
-              'game.combat.outcome',
-              'game.combat.loot',
-              'game.economy.trade',            // Economy events
-              'game.mining.extract',           // Mining events
-              'game.missions.assigned',        // Mission events
-              'game.missions.objective',
-              'game.missions.completed',
-              'game.services.fuel_purchase',   // Station services
-              'game.services.repair',
-              'game.social.reputation',        // Social events
-              'game.chat.message',             // Chat messages
-            ],
+            subscriber_id: this.subscriberId,
+            channels: [channel],
           }),
         }
       );
 
       if (response.ok) {
-        console.log('[SSE Manager] Subscribed to all channels');
+        console.log(`[SSE Manager] Subscribed to: ${channel}`);
       } else if (response.status === 404) {
-        // Subscription endpoint not implemented - this is OK
-        // Backend may broadcast all events without explicit subscriptions
-        console.log('[SSE Manager] Subscription endpoint not available (404) - using broadcast mode');
+        console.log('[SSE Manager] Subscription endpoint not available - broadcast mode');
       } else {
-        console.warn('[SSE Manager] Subscription failed:', response.status, await response.text());
+        console.warn('[SSE Manager] Subscription failed:', response.status);
       }
     } catch (error) {
-      // Network error or endpoint doesn't exist - gracefully continue
       console.log('[SSE Manager] Subscription not available:', (error as Error).message);
     }
   }
@@ -261,13 +395,25 @@ class SSEManager {
     this.isConnected = false;
     this.isConnecting = false;
 
+    // Don't attempt reconnect if app is backgrounded - will reconnect on foreground
+    if (this.isBackgrounded) {
+      return;
+    }
+
+    // Clear any existing reconnect timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.reconnectAttempts < this.maxReconnectAttempts && this.playerId) {
       this.reconnectAttempts++;
       const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
       console.log(`[SSE Manager] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
-      setTimeout(() => {
-        if (this.playerId) {
+      this.reconnectTimeout = setTimeout(() => {
+        this.reconnectTimeout = null;
+        if (this.playerId && !this.isBackgrounded) {
           this.connect(this.playerId);
         }
       }, delay);
@@ -308,6 +454,12 @@ class SSEManager {
   disconnect(): void {
     console.log('[SSE Manager] Disconnecting...');
 
+    // Clear any pending reconnect
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
@@ -318,6 +470,7 @@ class SSEManager {
     this.playerId = null;
     this.subscriberId = null;
     this.reconnectAttempts = 0;
+    this.isBackgrounded = false;
     this.listeners.clear();
 
     console.log('[SSE Manager] Disconnected');

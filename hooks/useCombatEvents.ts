@@ -1,8 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import EventSource from 'react-native-sse';
-import { storage } from '@/utils/storage';
-import { config } from '@/constants/config';
+import { sseManager } from '@/lib/sseManager';
 import { useCombatStore } from '@/stores/combatStore';
 import { useLootStore } from '@/stores/lootStore';
 import type {
@@ -12,14 +10,16 @@ import type {
 } from '@/types/combat';
 
 /**
- * Hook to subscribe to real-time combat events via Server-Sent Events (SSE)
+ * Hook to subscribe to real-time combat events via SSE Manager
  *
- * Listens for:
- * - combat_outcome: Damage updates each combat tick
- * - loot_received: Loot drops from defeated NPCs
- * - combat_ended: Combat instance completion
+ * Per A3-bug-remediation-plan.md Bug #2:
+ * - Uses centralized SSE Manager instead of creating own connection
+ * - All events come through single multiplexed connection
  *
- * Uses react-native-sse library for SSE support in React Native
+ * Per 03C-COMBAT.apib and 04-REALTIME-SSE.apib:
+ * - game.combat.tick: Damage updates each combat tick (line 481-522)
+ * - game.combat.loot: Loot drops from defeated NPCs (line 524-556)
+ * - game.combat.end: Combat instance completion (line 559-586)
  */
 
 export interface CombatEventCallbacks {
@@ -33,7 +33,6 @@ export function useCombatEvents(
   playerId: string,
   callbacks?: CombatEventCallbacks
 ) {
-  const eventSourceRef = useRef<any>(null);
   const queryClient = useQueryClient();
   const {
     updateParticipantHealth,
@@ -47,174 +46,112 @@ export function useCombatEvents(
   useEffect(() => {
     if (!playerId) return;
 
-    const setupSSE = async () => {
-      const accessToken = await storage.getAccessToken();
-      if (!accessToken) {
-        console.log('[SSE] No access token available for combat events');
-        return;
-      }
+    console.log('[Combat Events] Setting up listeners via SSE Manager');
 
-      console.log('[SSE] Connecting to Fanout service for combat events');
-      console.log(`[SSE] URL: ${config.FANOUT_URL}/v1/stream/gameplay`);
+    // Handle game.combat.tick event per 03C-COMBAT.apib (line 481-522)
+    const cleanupOutcome = sseManager.addEventListener('game.combat.tick', (data: any) => {
+      console.log('[Combat Events] Received game.combat.tick:', data);
+      // Transform backend format to frontend expected format
+      const payload: CombatOutcomeEvent['payload'] = {
+        combat_id: data.combat_id,
+        tick: data.tick,
+        events: (data.actions || []).map((action: any) => ({
+          type: 'damage',
+          attacker: action.attacker_id,
+          target: action.target_id,
+          damage: action.damage,
+          target_hull: data.participants?.find((p: any) => p.player_id === action.target_id)?.hull,
+          target_shield: data.participants?.find((p: any) => p.player_id === action.target_id)?.shield,
+        })),
+      };
 
-      // Connect to Fanout service through Gateway (SSE stream)
-      const eventSource = new EventSource(
-        `${config.FANOUT_URL}/v1/stream/gameplay`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
+      // Update combat tick
+      setCombatTick(payload.tick);
 
-      eventSource.addEventListener('open' as any, async () => {
-        console.log('[SSE] Connected to Fanout service (combat)');
-
-        // Subscribe to combat channels
-        try {
-          const subscribeResponse = await fetch(
-            'http://192.168.122.76:8086/v1/stream/gameplay/subscribe',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${accessToken}`,
-              },
-              body: JSON.stringify({
-                channels: [
-                  `player.${playerId}`, // Personal combat notifications
-                  'game.combat', // Global combat activity (optional)
-                ],
-              }),
-            }
-          );
-
-          if (subscribeResponse.ok) {
-            console.log('[SSE] Subscribed to combat channels');
-          } else {
-            console.error(
-              '[SSE] Subscription failed:',
-              await subscribeResponse.text()
+      // Process each tick event
+      payload.events.forEach((tickEvent) => {
+        if (tickEvent.type === 'damage' && tickEvent.target) {
+          // Update participant health
+          if (
+            tickEvent.target_hull !== undefined &&
+            tickEvent.target_shield !== undefined
+          ) {
+            updateParticipantHealth(
+              tickEvent.target,
+              tickEvent.target_hull,
+              tickEvent.target_shield
             );
           }
-        } catch (error) {
-          console.error('[SSE] Subscribe error:', error);
-        }
-      });
 
-      // Listen for SSE events
-      eventSource.addEventListener('message' as any, (event: any) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[SSE] Received combat event:', data.type, data);
-
-          // Handle combat_outcome event
-          if (data.type === 'combat_outcome') {
-            const payload: CombatOutcomeEvent['payload'] = data.payload;
-
-            // Update combat tick
-            setCombatTick(payload.tick);
-
-            // Process each tick event
-            payload.events.forEach((tickEvent) => {
-              if (tickEvent.type === 'damage' && tickEvent.target) {
-                // Update participant health
-                if (
-                  tickEvent.target_hull !== undefined &&
-                  tickEvent.target_shield !== undefined
-                ) {
-                  updateParticipantHealth(
-                    tickEvent.target,
-                    tickEvent.target_hull,
-                    tickEvent.target_shield
-                  );
-                }
-
-                // Add damage number animation
-                if (tickEvent.damage) {
-                  addDamageNumber({
-                    id: `${Date.now()}-${Math.random()}`,
-                    damage: tickEvent.damage,
-                    position: { x: 0, y: 0 }, // Will be calculated in UI
-                    timestamp: Date.now(),
-                    targetId: tickEvent.target,
-                  });
-                }
-              }
-
-              if (tickEvent.type === 'death' && tickEvent.target) {
-                // Mark participant as dead
-                updateParticipantHealth(tickEvent.target, 0, 0);
-              }
-            });
-
-            // Call custom callback if provided
-            if (callbacks?.onCombatOutcome) {
-              callbacks.onCombatOutcome(payload);
-            }
-          }
-
-          // Handle loot_received event
-          if (data.type === 'loot_received') {
-            const payload: LootReceivedEvent['payload'] = data.payload;
-
-            // Add loot to store (will show notification)
-            addLoot({
-              credits: payload.credits,
-              resources: payload.resources,
+          // Add damage number animation
+          if (tickEvent.damage) {
+            addDamageNumber({
+              id: `${Date.now()}-${Math.random()}`,
+              damage: tickEvent.damage,
+              position: { x: 0, y: 0 },
               timestamp: Date.now(),
+              targetId: tickEvent.target,
             });
-
-            // Invalidate inventory query to refresh
-            queryClient.invalidateQueries({ queryKey: ['inventory'] });
-            queryClient.invalidateQueries({ queryKey: ['user'] }); // For credits
-
-            // Call custom callback if provided
-            if (callbacks?.onLootReceived) {
-              callbacks.onLootReceived(payload);
-            }
           }
+        }
 
-          // Handle combat_ended event
-          if (data.type === 'combat_ended') {
-            const payload: CombatEndedEvent['payload'] = data.payload;
-
-            // Set combat result (will show results modal)
-            setCombatResult(payload.end_reason, payload.tick);
-
-            // End combat after a short delay
-            setTimeout(() => {
-              endCombat();
-            }, 500);
-
-            // Call custom callback if provided
-            if (callbacks?.onCombatEnded) {
-              callbacks.onCombatEnded(payload);
-            }
-          }
-        } catch (error) {
-          console.error('[SSE] Parse error:', error);
+        if (tickEvent.type === 'death' && tickEvent.target) {
+          updateParticipantHealth(tickEvent.target, 0, 0);
         }
       });
 
-      eventSource.addEventListener('error' as any, (error: any) => {
-        console.error('[SSE] Combat connection error:', error);
-        if (callbacks?.onError) {
-          callbacks.onError(error);
-        }
-      });
-
-      eventSourceRef.current = eventSource;
-    };
-
-    setupSSE();
-
-    return () => {
-      if (eventSourceRef.current) {
-        console.log('[SSE] Closing combat connection');
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      if (callbacks?.onCombatOutcome) {
+        callbacks.onCombatOutcome(payload);
       }
+    });
+
+    // Handle game.combat.loot event per 03C-COMBAT.apib (line 524-556)
+    const cleanupLoot = sseManager.addEventListener('game.combat.loot', (data: any) => {
+      console.log('[Combat Events] Received game.combat.loot:', data);
+
+      // Add loot to store (will show notification)
+      // Backend format: { loot: { credits, resources } }
+      addLoot({
+        credits: data.loot?.credits ?? 0,
+        resources: data.loot?.resources ?? [],
+        timestamp: Date.now(),
+      });
+
+      // Invalidate inventory query to refresh
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['user'] });
+
+      if (callbacks?.onLootReceived) {
+        callbacks.onLootReceived(data);
+      }
+    });
+
+    // Handle game.combat.end event per 03C-COMBAT.apib (line 559-586)
+    const cleanupEnded = sseManager.addEventListener('game.combat.end', (data: any) => {
+      console.log('[Combat Events] Received game.combat.end:', data);
+
+      // Backend format: { outcome, winning_team, duration_seconds, total_ticks, survivors }
+      setCombatResult(data.outcome, data.total_ticks);
+
+      setTimeout(() => {
+        endCombat();
+      }, 500);
+
+      if (callbacks?.onCombatEnded) {
+        callbacks.onCombatEnded({
+          combat_id: data.combat_id,
+          end_reason: data.outcome,
+          tick: data.total_ticks,
+        });
+      }
+    });
+
+    // Cleanup all listeners on unmount
+    return () => {
+      console.log('[Combat Events] Cleaning up listeners');
+      cleanupOutcome();
+      cleanupLoot();
+      cleanupEnded();
     };
   }, [playerId, queryClient, callbacks]);
 }

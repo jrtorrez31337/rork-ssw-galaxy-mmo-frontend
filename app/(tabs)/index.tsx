@@ -68,7 +68,7 @@ export default function BridgeScreen() {
 
   // Subscribe to real-time events
   useCombatEvents(profileId || '');
-  useTravelEvents(profileId || '', {});
+  useTravelEvents(profileId || '');
 
   // Player position for sector view (center)
   const playerPosition: [number, number, number] = [0, 0, 0];

@@ -1,0 +1,547 @@
+FORMAT: 1A
+HOST: http://192.168.122.76:8080/v1
+
+# SSW Galaxy MMO - Admin & Operations (vNext 2.0)
+
+**Version**: 2.0 (vNext)
+**Status**: Implementation-Grounded
+**Last Verified**: 2025-12-27
+**Services**: Gateway, Moderation (Internal Port: 8089)
+
+---
+
+## Document Purpose
+
+This document covers **administrative and operational endpoints**:
+- **Health Checks**: Service health monitoring
+- **Moderation**: Player moderation actions (kick, mute, ban, teleport)
+- **Audit Logging**: Moderation action history
+
+**Code**: `/services/gateway/`, `/services/moderation/`
+
+**Related Documents**:
+- See `01-OVERVIEW.apib` for global standards
+- See `06-APPENDICES.md` for error codes
+
+---
+
+## Health Checks
+
+### GET /v1/health
+
+Get aggregated health status of all services and infrastructure.
+
+**Authentication**: Not required (public endpoint)
+
+**Response** (200 OK):
+```json
+{
+  "status": "ok",
+  "services": {
+    "identity": "ok",
+    "worldsim": "ok",
+    "combat": "ok",
+    "economy": "ok",
+    "social": "ok",
+    "fanout": "ok",
+    "chat": "ok",
+    "procgen": "ok",
+    "moderation": "ok",
+    "missions": "ok"
+  },
+  "infrastructure": {
+    "redis": "ok",
+    "cockroachdb": "ok",
+    "nats": "ok"
+  },
+  "uptime_seconds": 7200,
+  "version": "1.0.0"
+}
+```
+
+**Response** (503 Service Unavailable - if any service down):
+```json
+{
+  "status": "degraded",
+  "services": {
+    "identity": "ok",
+    "worldsim": "error",
+    "combat": "ok",
+    "economy": "ok",
+    "social": "ok",
+    "fanout": "ok",
+    "chat": "ok",
+    "procgen": "ok",
+    "moderation": "ok",
+    "missions": "ok"
+  },
+  "infrastructure": {
+    "redis": "ok",
+    "cockroachdb": "error",
+    "nats": "ok"
+  },
+  "uptime_seconds": 7200,
+  "version": "1.0.0"
+}
+```
+
+**Status Values**:
+- `ok`: Service is healthy and responding
+- `error`: Service is down or unhealthy
+- `degraded`: Overall status when at least one service is down
+
+**Usage**:
+- Load balancers can use this for health checks
+- Monitoring systems can poll this endpoint
+- Frontend can display service status page
+
+**Code**: `/services/gateway/internal/handlers/health.go`
+
+---
+
+### GET /{service}/health
+
+Get health status of individual service.
+
+**Authentication**: Not required (public endpoint, but internal ports)
+
+**Services**:
+- `/health` on each service's internal port (8081-8089)
+
+**Response** (200 OK):
+```json
+{
+  "status": "ok",
+  "service": "worldsim",
+  "version": "1.0.0",
+  "uptime_seconds": 7200
+}
+```
+
+**Usage**: Internal health checks by gateway or orchestration tools
+
+**Code**: Each service has `/health` endpoint in its handlers
+
+---
+
+## Moderation
+
+**IMPORTANT**: All moderation endpoints require **admin-level authentication**. Regular players cannot access these endpoints.
+
+**Admin Authentication**: Special JWT with `role: admin` claim (not documented in v1.2)
+
+---
+
+### POST /v1/moderation/kick
+
+Kick a player from the server (disconnect, temporary).
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```json
+{
+  "admin_id": "admin-uuid-1",
+  "player_id": "player-uuid-1",
+  "reason": "Spamming chat",
+  "duration_minutes": 30
+}
+```
+
+**Validation Rules**:
+- `admin_id`: Must match authenticated admin profile ID
+- `player_id`: Must be valid player UUID
+- `reason`: Required, 5-200 characters
+- `duration_minutes`: Optional, default 30, max 1440 (24 hours)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "action_id": "action-uuid-1",
+    "player_id": "player-uuid-1",
+    "action_type": "kick",
+    "expires_at": "2025-12-27T13:04:56.123456Z",
+    "timestamp": "2025-12-27T12:34:56.123456Z"
+  }
+}
+```
+
+**Effects**:
+- Player's active sessions are terminated
+- Player cannot log in until `expires_at`
+- All active ships/combat instances involving player are ended
+- Audit log entry created
+
+**Error Codes**:
+- `NOT_FOUND` (404) - Player does not exist
+- `ACTION_FAILED` (500) - Failed to kick player
+- `FORBIDDEN` (403) - Not an admin
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/moderation/internal/handlers/moderation.go:25-80`
+
+---
+
+### POST /v1/moderation/mute
+
+Mute a player (prevent chat messages).
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```json
+{
+  "admin_id": "admin-uuid-1",
+  "player_id": "player-uuid-1",
+  "reason": "Profanity in global chat",
+  "duration_minutes": 60
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "action_id": "action-uuid-2",
+    "player_id": "player-uuid-1",
+    "action_type": "mute",
+    "expires_at": "2025-12-27T13:34:56.123456Z",
+    "timestamp": "2025-12-27T12:34:56.123456Z"
+  }
+}
+```
+
+**Effects**:
+- Player cannot send chat messages until `expires_at`
+- Existing messages remain visible
+- Player can still receive messages
+- Audit log entry created
+
+**Error Codes**:
+- `NOT_FOUND` (404) - Player does not exist
+- `ACTION_FAILED` (500) - Failed to mute player
+- `FORBIDDEN` (403) - Not an admin
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/moderation/internal/handlers/moderation.go:85-130`
+
+---
+
+### POST /v1/moderation/ban/temp
+
+Temporarily ban a player (account suspension).
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```json
+{
+  "admin_id": "admin-uuid-1",
+  "player_id": "player-uuid-1",
+  "reason": "Exploiting game mechanics",
+  "duration_hours": 72
+}
+```
+
+**Validation Rules**:
+- `duration_hours`: Required, min 1, max 720 (30 days for temp ban)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "action_id": "action-uuid-3",
+    "player_id": "player-uuid-1",
+    "action_type": "temp_ban",
+    "expires_at": "2025-12-30T12:34:56.123456Z",
+    "timestamp": "2025-12-27T12:34:56.123456Z"
+  }
+}
+```
+
+**Effects**:
+- All player sessions terminated
+- Account cannot log in until `expires_at`
+- Account status set to `SUSPENDED`
+- Player notified via email (if configured)
+- Audit log entry created
+
+**Error Codes**:
+- `NOT_FOUND` (404) - Player does not exist
+- `VALIDATION_ERROR` (400) - Invalid duration
+- `ACTION_FAILED` (500) - Failed to ban player
+- `FORBIDDEN` (403) - Not an admin
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/moderation/internal/handlers/moderation.go:135-190`
+
+---
+
+### POST /v1/moderation/ban/perm
+
+Permanently ban a player (account termination).
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```json
+{
+  "admin_id": "admin-uuid-1",
+  "player_id": "player-uuid-1",
+  "reason": "Repeated ToS violations, harassment"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "action_id": "action-uuid-4",
+    "player_id": "player-uuid-1",
+    "action_type": "perm_ban",
+    "expires_at": null,
+    "timestamp": "2025-12-27T12:34:56.123456Z"
+  }
+}
+```
+
+**Effects**:
+- All player sessions terminated
+- Account cannot log in (permanent)
+- Account status set to `BANNED`
+- Player notified via email (if configured)
+- Audit log entry created
+- **IRREVERSIBLE** (requires database manual intervention to undo)
+
+**Error Codes**:
+- `NOT_FOUND` (404) - Player does not exist
+- `ACTION_FAILED` (500) - Failed to ban player
+- `FORBIDDEN` (403) - Not an admin
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/moderation/internal/handlers/moderation.go:195-240`
+
+---
+
+### POST /v1/moderation/teleport
+
+Teleport a player's ship to a specific sector (admin tool).
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```json
+{
+  "admin_id": "admin-uuid-1",
+  "player_id": "player-uuid-1",
+  "ship_id": "ship-uuid-1",
+  "to_sector": "0,0,0",
+  "reason": "Player stuck in bugged sector"
+}
+```
+
+**Validation Rules**:
+- `ship_id`: Must be owned by `player_id`
+- `to_sector`: Must be valid sector coordinates
+- Ship must not be in combat
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "action_id": "action-uuid-5",
+    "ship_id": "ship-uuid-1",
+    "from_sector": "100,200,-50",
+    "to_sector": "0,0,0",
+    "position": {"x": 0, "y": 0, "z": 0},
+    "timestamp": "2025-12-27T12:34:56.123456Z"
+  }
+}
+```
+
+**Effects**:
+- Ship instantly moved to target sector
+- Ship position randomized in sector
+- Ship undocked if currently docked
+- Combat instance ended if in combat
+- Audit log entry created
+
+**Error Codes**:
+- `NOT_FOUND` (404) - Player or ship does not exist
+- `SHIP_IN_COMBAT` (400) - Cannot teleport during combat
+- `SECTOR_NOT_FOUND` (404) - Target sector invalid
+- `ACTION_FAILED` (500) - Failed to teleport
+- `FORBIDDEN` (403) - Not an admin
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/moderation/internal/handlers/moderation.go:245-300`
+
+---
+
+## Audit Logging
+
+### GET /v1/moderation/audit
+
+Get audit log of all moderation actions.
+
+**Authentication**: Required (admin only)
+
+**Query Parameters**:
+- `limit` (optional): Number of entries (default: 50, max: 100)
+- `offset` (optional): Pagination offset (default: 0)
+- `admin_id` (optional): Filter by admin who performed action
+- `player_id` (optional): Filter by affected player
+- `action_type` (optional): Filter by action type (`kick`, `mute`, `temp_ban`, `perm_ban`, `teleport`)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "entries": [
+      {
+        "action_id": "action-uuid-1",
+        "admin_id": "admin-uuid-1",
+        "admin_name": "Admin Bob",
+        "player_id": "player-uuid-1",
+        "player_name": "Captain Nova",
+        "action_type": "mute",
+        "reason": "Profanity in global chat",
+        "duration_minutes": 60,
+        "expires_at": "2025-12-27T13:34:56.123456Z",
+        "timestamp": "2025-12-27T12:34:56.123456Z"
+      },
+      {
+        "action_id": "action-uuid-2",
+        "admin_id": "admin-uuid-2",
+        "admin_name": "Admin Alice",
+        "player_id": "player-uuid-2",
+        "player_name": "Commander Atlas",
+        "action_type": "temp_ban",
+        "reason": "Exploiting game mechanics",
+        "duration_hours": 72,
+        "expires_at": "2025-12-30T12:34:56.123456Z",
+        "timestamp": "2025-12-27T11:15:00.123456Z"
+      }
+    ],
+    "total": 142,
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+**Usage**:
+- Admin dashboard for reviewing moderation actions
+- Accountability and transparency
+- Identifying problem players with repeated actions
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid query parameters
+- `FORBIDDEN` (403) - Not an admin
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/moderation/internal/handlers/moderation.go:305-360`
+
+---
+
+### GET /v1/moderation/players/{player_id}/history
+
+Get moderation history for a specific player.
+
+**Authentication**: Required (admin only)
+
+**URL Parameters**:
+- `player_id` (required): Player UUID
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "player_id": "player-uuid-1",
+    "player_name": "Captain Nova",
+    "total_actions": 5,
+    "active_actions": [
+      {
+        "action_id": "action-uuid-current",
+        "action_type": "mute",
+        "reason": "Profanity in global chat",
+        "admin_id": "admin-uuid-1",
+        "admin_name": "Admin Bob",
+        "expires_at": "2025-12-27T13:34:56.123456Z",
+        "timestamp": "2025-12-27T12:34:56.123456Z"
+      }
+    ],
+    "history": [
+      {
+        "action_id": "action-uuid-1",
+        "action_type": "kick",
+        "reason": "Spamming chat",
+        "admin_id": "admin-uuid-1",
+        "admin_name": "Admin Bob",
+        "duration_minutes": 30,
+        "expired_at": "2025-12-26T10:00:00.123456Z",
+        "timestamp": "2025-12-26T09:30:00.123456Z"
+      }
+    ]
+  }
+}
+```
+
+**Field Descriptions**:
+- `active_actions`: Actions that are currently in effect (not expired)
+- `history`: Past actions that have expired or been revoked
+- `total_actions`: Total count of all actions ever taken against player
+
+**Error Codes**:
+- `NOT_FOUND` (404) - Player does not exist
+- `FORBIDDEN` (403) - Not an admin
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/moderation/internal/handlers/moderation.go:365-420`
+
+---
+
+## Summary
+
+This document covers **administrative and operational endpoints**:
+
+### Health Checks
+1. **GET /v1/health**: Aggregated health status of all services and infrastructure
+2. **GET /{service}/health**: Individual service health checks
+
+### Moderation (Admin Only)
+3. **POST /v1/moderation/kick**: Kick player (temporary disconnect, 30 min default)
+4. **POST /v1/moderation/mute**: Mute player (prevent chat, configurable duration)
+5. **POST /v1/moderation/ban/temp**: Temporary ban (1-720 hours)
+6. **POST /v1/moderation/ban/perm**: Permanent ban (irreversible)
+7. **POST /v1/moderation/teleport**: Teleport ship to sector (admin tool)
+
+### Audit Logging (Admin Only)
+8. **GET /v1/moderation/audit**: Get all moderation action history (paginated)
+9. **GET /v1/moderation/players/{player_id}/history**: Get player's moderation history
+
+**Key Features**:
+- **Health Monitoring**: Aggregated and per-service health checks
+- **Player Moderation**: Kick, mute, ban capabilities with audit trail
+- **Admin Tools**: Teleport for stuck players
+- **Audit Logging**: Full accountability for all moderation actions
+- **Admin Authentication**: Special admin role required
+
+**Critical Note**:
+- All moderation endpoints documented here were **completely missing** from API-BLUEPRINT.md v1.2
+- This is new documentation based on actual implementation
+
+**Next Steps**:
+- Read `01-OVERVIEW.apib` for authentication details
+- Read `03G-CHAT.apib` for chat system that moderation affects
+- Read `06-APPENDICES.md` for error code reference
+
+---
+
+**End of 05-ADMIN-OPS.apib**

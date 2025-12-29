@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Circle, Polygon, Text as SvgText, G, Line } from 'react-native-svg';
 import Colors from '@/constants/colors';
 import type { NPCEntity } from '@/types/combat';
@@ -11,10 +11,6 @@ interface SectorView2DProps {
   selectedNPCId?: string;
 }
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const VIEW_SIZE = SCREEN_WIDTH - 32; // Account for padding
-const SCALE = VIEW_SIZE / 10000; // 10000 units = full view
-
 /**
  * 2D vector display of sector
  * Shows player ship and NPCs as vector graphics
@@ -25,6 +21,14 @@ export default function SectorView2D({
   onNPCPress,
   selectedNPCId,
 }: SectorView2DProps) {
+  // Use hook for dynamic window dimensions (fixes iOS Expo Go rendering issue)
+  const { width: screenWidth } = useWindowDimensions();
+
+  // Calculate view size based on current screen width
+  // Fallback to 300 if width is not yet available
+  const VIEW_SIZE = screenWidth > 32 ? screenWidth - 32 : 300;
+  const SCALE = VIEW_SIZE / 10000; // 10000 units = full view
+
   // Convert 3D position to 2D screen coordinates (using x, y, ignoring z for now)
   const to2D = (pos: [number, number, number]): { x: number; y: number } => {
     // Center the view and scale
@@ -38,10 +42,24 @@ export default function SectorView2D({
     return `${x},${y - size} ${x - size/2},${y + size/2} ${x + size/2},${y + size/2}`;
   };
 
+  // Ensure we have valid dimensions for iOS
+  if (VIEW_SIZE <= 0 || !Number.isFinite(VIEW_SIZE)) {
+    return (
+      <View style={[styles.container, { height: 300, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: Colors.textSecondary }}>Loading sector view...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Grid background */}
-      <Svg width={VIEW_SIZE} height={VIEW_SIZE} style={styles.svg}>
+      <Svg
+        width={VIEW_SIZE}
+        height={VIEW_SIZE}
+        viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
+        style={styles.svg}
+      >
         {/* Grid lines */}
         <G opacity={0.1}>
           {[...Array(11)].map((_, i) => {

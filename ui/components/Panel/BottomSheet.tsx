@@ -4,7 +4,7 @@ import {
   StyleSheet,
   Modal,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   PanResponder,
   KeyboardAvoidingView,
   Platform,
@@ -14,8 +14,6 @@ import * as Haptics from 'expo-haptics';
 import { Backdrop } from './Backdrop';
 import { Handle } from './Handle';
 import { tokens } from '../../theme';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export type BottomSheetHeight = 'half' | 'threequarter' | 'full' | number;
 
@@ -37,6 +35,10 @@ export function BottomSheet({
   children,
 }: BottomSheetProps) {
   const insets = useSafeAreaInsets();
+  // Use hook for dynamic screen height (fixes iOS Expo Go rendering issue)
+  const { height: screenHeight } = useWindowDimensions();
+  const SCREEN_HEIGHT = screenHeight > 0 ? screenHeight : 800; // Fallback for initial render
+
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 

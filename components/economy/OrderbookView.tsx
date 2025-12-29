@@ -13,7 +13,7 @@ export default function OrderbookView({ marketId, commodity }: OrderbookViewProp
   const { data: orderbook, isLoading, error } = useQuery({
     queryKey: ['orderbook', marketId, commodity],
     queryFn: () => economyApi.getOrderbook(marketId, commodity),
-    refetchInterval: 5000, // Refresh every 5 seconds
+    // Real-time updates via SSE - useTradingEvents hook invalidates this query on trade events
     enabled: !!marketId && !!commodity,
   });
 

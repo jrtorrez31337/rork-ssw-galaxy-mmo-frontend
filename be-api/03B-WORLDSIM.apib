@@ -1,0 +1,957 @@
+FORMAT: 1A
+HOST: http://192.168.122.76:8080/v1
+
+# SSW Galaxy MMO - World Simulation (vNext 2.0)
+
+**Version**: 2.0 (vNext)
+**Status**: Implementation-Grounded
+**Last Verified**: 2025-12-27
+**Service**: WorldSim (Internal Port: 8082)
+
+---
+
+## Document Purpose
+
+This document covers the **World Simulation Service**, responsible for:
+- **Sectors**: Static sector information and dynamic state
+- **Movement**: Hyperspace jumps, docking, undocking
+- **Inventory**: Resource management and transfers
+- **Mining**: Resource node discovery and extraction
+- **Station Services**: Refueling and repairs (NEW in vNext 2.0)
+
+**Code**: `/services/worldsim/`
+
+**Related Documents**:
+- See `01-OVERVIEW.apib` for global standards
+- See `03C-COMBAT.apib` for combat mechanics
+- See `03D-ECONOMY.apib` for trading
+- See `04-REALTIME-SSE.apib` for movement events
+
+---
+
+## Sectors
+
+### GET /v1/sectors/{sector_id}
+
+Get static information about a sector (faction control, stations, system type).
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `sector_id` (required): Sector coordinates in format `x,y,z` or `x.y.z` (e.g., `0,0,0` or `1.2.-3`)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "id": "0,0,0",
+    "name": "Sol System",
+    "faction_control": "terran_federation",
+    "faction_control_percentage": 85.0,
+    "threat_level": 1,
+    "system_type": "core",
+    "stations": [
+      {
+        "id": "00000000-0000-0000-0000-000000000101",
+        "name": "New Eden Trade Hub",
+        "station_type": "trade",
+        "position": {"x": 0, "y": 0, "z": 0},
+        "services": ["market", "refuel", "repair", "missions"],
+        "docking_capacity": 100,
+        "faction_id": "terran_federation_uuid"
+      }
+    ],
+    "resources": ["hydrogen", "iron_ore", "ice_water"],
+    "coordinates": {"x": 0, "y": 0, "z": 0}
+  }
+}
+```
+
+**Field Descriptions**:
+- `id`: Sector coordinates (canonical format `x,y,z`)
+- `name`: Human-readable sector name (procedurally generated)
+- `faction_control`: Dominant faction ID
+- `faction_control_percentage`: Percentage of sector controlled by dominant faction (0-100)
+- `threat_level`: Combat danger rating (1 = safe, 5 = extreme)
+- `system_type`: Core system classification (e.g., `core`, `frontier`, `nebula`, `void`)
+- `stations`: List of stations in sector
+- `resources`: Available resource types for mining
+- `coordinates`: Sector coordinates as object
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid sector coordinates format
+- `SECTOR_NOT_FOUND` (404) - Sector does not exist (valid coordinates, but not generated yet)
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/worldsim/internal/handlers/sector.go`
+
+---
+
+### GET /v1/sectors/{sector_id}/state
+
+Get real-time dynamic state of a sector (active ships, NPCs, resource nodes).
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `sector_id` (required): Sector coordinates (format: `x,y,z`)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "sector_id": "0,0,0",
+    "timestamp": "2025-12-27T12:34:56.123456Z",
+    "player_ships": [
+      {
+        "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+        "owner_id": "38a87211-63b6-409b-b433-8f443e333953",
+        "ship_name": "Stardust Runner",
+        "ship_type": "scout",
+        "position": {"x": 1500.5, "y": -200.3, "z": 800.0},
+        "velocity": {"x": 0, "y": 0, "z": 0},
+        "is_docked": false
+      }
+    ],
+    "npcs": [
+      {
+        "npc_id": "npc_550e8400-e29b-41d4-a716-446655440000",
+        "npc_type": "pirate_frigate",
+        "faction": "red_hand_pirates",
+        "position": {"x": -3200.0, "y": 500.0, "z": -150.0},
+        "threat_rating": 3
+      }
+    ],
+    "resource_nodes": 12,
+    "active_combats": 0
+  }
+}
+```
+
+**Field Descriptions**:
+- `timestamp`: Server time of state snapshot (ISO 8601 UTC)
+- `player_ships`: List of player ships currently in sector
+- `npcs`: List of active NPCs in sector
+- `resource_nodes`: Count of available resource nodes (use `/v1/mining/nodes` for details)
+- `active_combats`: Number of ongoing combat instances
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid sector coordinates
+- `SECTOR_NOT_FOUND` (404) - Sector does not exist
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/worldsim/internal/handlers/sector.go`
+
+---
+
+### GET /v1/sectors/{sector_id}/entities
+
+Get detailed list of all entities in a sector (ships, NPCs, stations, nodes).
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `sector_id` (required): Sector coordinates (format: `x,y,z`)
+
+**Query Parameters**:
+- `type` (optional): Filter by entity type (`ship`, `npc`, `station`, `node`, `all` [default])
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "sector_id": "0,0,0",
+    "entities": [
+      {
+        "entity_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+        "entity_type": "ship",
+        "name": "Stardust Runner",
+        "owner_id": "38a87211-63b6-409b-b433-8f443e333953",
+        "position": {"x": 1500.5, "y": -200.3, "z": 800.0},
+        "metadata": {
+          "ship_type": "scout",
+          "is_docked": false,
+          "is_in_combat": false
+        }
+      },
+      {
+        "entity_id": "00000000-0000-0000-0000-000000000101",
+        "entity_type": "station",
+        "name": "New Eden Trade Hub",
+        "owner_id": null,
+        "position": {"x": 0, "y": 0, "z": 0},
+        "metadata": {
+          "station_type": "trade",
+          "services": ["market", "refuel", "repair"],
+          "docking_capacity": 100,
+          "docked_ships_count": 24
+        }
+      }
+    ]
+  }
+}
+```
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid sector coordinates or type filter
+- `SECTOR_NOT_FOUND` (404) - Sector does not exist
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/worldsim/internal/handlers/entity.go`
+
+---
+
+## Movement
+
+### POST /v1/actions/jump
+
+Initiate a hyperspace jump to another sector.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "to_sector": "1,0,0"
+}
+```
+
+**Validation Rules** (Code: `/services/worldsim/internal/service/movement.go:142-210`):
+
+1. **Ship Existence**: Ship must exist and be owned by authenticated profile
+2. **Ship Not Docked**: Cannot jump while docked at a station
+   - Error: `SHIP_DOCKED` (400)
+3. **Ship Not in Combat**: Cannot jump while in active combat
+   - Error: `SHIP_IN_COMBAT` (400)
+4. **Jump Cooldown**: Must wait 10 seconds between jumps
+   - Error: `JUMP_ON_COOLDOWN` (400)
+   - Error message includes seconds remaining
+5. **Fuel Check**: Ship must have enough fuel for the jump
+   - Error: `INSUFFICIENT_FUEL` (400)
+   - **Fuel Cost Formula**: `distance × (1.0 / ship_speed) × sector_modifier`
+   - Distance calculated as 3D Euclidean distance between sector coordinates
+   - `sector_modifier`: Multiplier based on destination sector type (1.0 for normal, 1.5 for nebula, 2.0 for void)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+    "from_sector": "0,0,0",
+    "to_sector": "1,0,0",
+    "fuel_consumed": 0.2,
+    "fuel_remaining": 99.8,
+    "distance": 1.0,
+    "arrival_position": {"x": 0, "y": 0, "z": 0},
+    "arrival_time": "2025-12-27T12:34:58.123456Z",
+    "message": "Jump to 1,0,0 successful"
+  }
+}
+```
+
+**Field Descriptions**:
+- `distance`: 3D Euclidean distance between sector centers (light-years)
+- `fuel_consumed`: Actual fuel deducted from ship
+- `fuel_remaining`: Fuel left after jump
+- `arrival_position`: Ship position in destination sector (randomized spawn point)
+- `arrival_time`: Server timestamp of jump completion
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body or UUIDs
+- `SHIP_NOT_FOUND` (404) - Ship does not exist
+- `INSUFFICIENT_FUEL` (400) - Not enough fuel for jump
+- `SHIP_DOCKED` (400) - Ship must undock first
+- `SHIP_IN_COMBAT` (400) - Cannot jump during combat
+- `JUMP_ON_COOLDOWN` (400) - Must wait before next jump
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Ship not owned by authenticated profile
+
+**NATS Events Published**:
+- `game.movement.jump` - Broadcast jump event
+- `player.{owner_id}` - Personal notification to ship owner
+
+**Code**: `/services/worldsim/internal/service/movement.go:142-210`
+
+---
+
+### POST /v1/actions/dock
+
+Dock ship at a station.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "station_id": "00000000-0000-0000-0000-000000000101"
+}
+```
+
+**Validation Rules** (Code: `/services/worldsim/internal/service/movement.go:215-280`):
+
+1. **Ship Existence**: Ship must exist and be owned by authenticated profile
+2. **Station Existence**: Station must exist
+   - Error: `STATION_NOT_FOUND` (404)
+3. **Same Sector**: Ship and station must be in same sector
+   - Error: `NOT_IN_SECTOR` (400)
+4. **Range Check**: Ship must be within **5000 units** of station
+   - Error: `NOT_IN_RANGE` (400)
+   - Distance calculated as 3D Euclidean distance
+5. **Station Capacity**: Station must have available docking slots
+   - Error: `STATION_FULL` (400)
+6. **Ship Not in Combat**: Cannot dock during active combat
+   - Error: `SHIP_IN_COMBAT` (400)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+    "station": {
+      "id": "00000000-0000-0000-0000-000000000101",
+      "name": "New Eden Trade Hub",
+      "location_sector": "0,0,0",
+      "station_type": "trade",
+      "position": {"x": 0, "y": 0, "z": 0},
+      "services": ["market", "refuel", "repair", "missions"],
+      "docking_capacity": 100,
+      "docked_ships_count": 25
+    },
+    "message": "Successfully docked at New Eden Trade Hub"
+  }
+}
+```
+
+**Station Services**:
+- `market` - Access trading endpoints (see `03D-ECONOMY.apib`)
+- `refuel` - Purchase fuel (see **Station Services** section below)
+- `repair` - Repair hull and shields (see **Station Services** section below)
+- `missions` - Accept missions (see `03E-MISSIONS.apib`)
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body or UUIDs
+- `SHIP_NOT_FOUND` (404) - Ship does not exist
+- `STATION_NOT_FOUND` (404) - Station does not exist
+- `NOT_IN_SECTOR` (400) - Ship and station in different sectors
+- `NOT_IN_RANGE` (400) - Ship too far from station (>5000 units)
+- `STATION_FULL` (400) - No docking slots available
+- `SHIP_IN_COMBAT` (400) - Cannot dock during combat
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Ship not owned by authenticated profile
+
+**NATS Events Published**:
+- `game.movement.dock` - Broadcast docking event
+- `player.{owner_id}` - Personal notification to ship owner
+
+**Code**: `/services/worldsim/internal/service/movement.go:215-280`
+
+---
+
+### POST /v1/actions/undock
+
+Undock ship from current station.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced"
+}
+```
+
+**Validation Rules** (Code: `/services/worldsim/internal/service/movement.go:285-320`):
+
+1. **Ship Existence**: Ship must exist and be owned by authenticated profile
+2. **Ship Docked**: Ship must currently be docked at a station
+   - Error: `SHIP_NOT_DOCKED` (400)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+    "sector": "0,0,0",
+    "position": {"x": 150.5, "y": -50.3, "z": 100.0},
+    "message": "Successfully undocked"
+  }
+}
+```
+
+**Field Descriptions**:
+- `position`: Ship position after undocking (near station, randomized offset)
+- Ship retains same sector as station
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body or ship_id format
+- `SHIP_NOT_FOUND` (404) - Ship does not exist
+- `SHIP_NOT_DOCKED` (400) - Ship is not currently docked
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Ship not owned by authenticated profile
+
+**NATS Events Published**:
+- `game.movement.undock` - Broadcast undocking event
+- `player.{owner_id}` - Personal notification to ship owner
+
+**Code**: `/services/worldsim/internal/service/movement.go:285-320`
+
+---
+
+### GET /v1/snapshot
+
+Get current player state snapshot (position, health, active ship, sector).
+
+**Authentication**: Required
+
+**Query Parameters**:
+- `player_id` (required): Profile ID of player
+- `sector_id` (optional): Current sector (if provided, includes sector-specific data)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "version": 42,
+    "timestamp": "2025-12-27T12:34:56.123456Z",
+    "player": {
+      "profile_id": "38a87211-63b6-409b-b433-8f443e333953",
+      "active_ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+      "position": {"x": 1500.5, "y": -200.3, "z": 800.0},
+      "velocity": {"x": 0, "y": 0, "z": 0},
+      "health": 850,
+      "shield": 200,
+      "fuel": 99.8,
+      "is_docked": false,
+      "is_in_combat": false
+    },
+    "sector": {
+      "id": "0,0,0",
+      "name": "Sol System",
+      "faction_control": "terran_federation",
+      "threat_level": 1
+    },
+    "active_combat": null
+  }
+}
+```
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Missing or invalid player_id
+- `NOT_FOUND` (404) - Player or active ship not found
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/worldsim/internal/handlers/sector.go`
+
+---
+
+## Inventory
+
+### GET /v1/inventory/{owner_id}
+
+Get inventory for a ship, station, or planet.
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `owner_id` (required): UUID of ship, station, or planet
+
+**Query Parameters**:
+- `owner_type` (required): Entity type (`ship`, `station`, or `planet`)
+- `resource_type` (optional): Filter by specific resource type (e.g., `iron_ore`, `hydrogen`)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "owner_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+    "owner_type": "ship",
+    "capacity": 300,
+    "used": 145,
+    "available": 155,
+    "items": [
+      {
+        "id": "660e8400-e29b-41d4-a716-446655440001",
+        "resource_type": "iron_ore",
+        "quantity": 50,
+        "quality": 1.2,
+        "unit_volume": 1.0,
+        "total_volume": 50.0
+      },
+      {
+        "id": "660e8400-e29b-41d4-a716-446655440002",
+        "resource_type": "hydrogen",
+        "quantity": 95,
+        "quality": 1.0,
+        "unit_volume": 1.0,
+        "total_volume": 95.0
+      }
+    ]
+  }
+}
+```
+
+**Field Descriptions**:
+- `capacity`: Maximum cargo capacity (cubic meters)
+- `used`: Current cargo volume used
+- `available`: Remaining cargo space
+- `quality`: Resource quality multiplier (0.5 to 2.0, higher = better)
+  - Affects sell price, crafting outcomes, and NPC reputation
+- `unit_volume`: Volume per unit of resource
+- `total_volume`: `quantity × unit_volume`
+
+**Resource Tiers**:
+
+**Tier 1 - Common** (most sectors):
+- `iron_ore` - Basic hull repairs
+- `ice_water` - Life support, fuel processing
+- `silicates` - Electronics, sensors
+- `hydrogen` - Fuel (1 unit = 10 LY jump range)
+- `carbon` - Shields, advanced materials
+
+**Tier 2 - Uncommon** (specific sector types):
+- `titanium_ore` - Advanced hull plating
+- `platinum` - High-efficiency power systems
+- `rare_earth` - Sensor arrays, jump drives
+- `xenon_gas` - Shield boosters
+
+**Tier 3 - Rare** (anomalies, special events):
+- `antimatter` - Weapons, experimental tech
+- `exotic_crystals` - Legendary equipment
+- `ancient_artifacts` - Faction reputation, research
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid parameters or owner_type
+- `NOT_FOUND` (404) - Owner entity not found
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Not authorized to view this inventory
+
+**Code**: `/services/worldsim/internal/inventory/handlers.go:25-80`
+
+---
+
+### POST /v1/inventory/transfer
+
+Transfer resources between two entities (ship-to-ship, ship-to-station, etc.).
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "source_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "source_type": "ship",
+  "target_id": "00000000-0000-0000-0000-000000000101",
+  "target_type": "station",
+  "resource_type": "iron_ore",
+  "quantity": 20,
+  "quality": 1.2
+}
+```
+
+**Validation Rules** (Code: `/services/worldsim/internal/inventory/service.go:145-230`):
+
+1. **Required Fields**: All fields must be provided
+   - Error: `VALIDATION_ERROR` (400)
+2. **Valid Types**: `source_type` and `target_type` must be `ship`, `station`, or `planet`
+   - Error: `VALIDATION_ERROR` (400)
+3. **Entities Exist**: Both source and target must exist
+   - Error: `NOT_FOUND` (404)
+4. **Same Sector**: Source and target must be in same sector
+   - Error: `NOT_IN_SECTOR` (400)
+5. **Range Check** (ship-to-ship only): Ships must be within **1000 units**
+   - Error: `NOT_IN_RANGE` (400)
+   - Stations have infinite range (auto-transfer from docked ships)
+6. **Sufficient Quantity**: Source must have enough resources
+   - Error: `INSUFFICIENT_QUANTITY` (400)
+7. **Quality Match**: Source resource quality must match specified quality
+   - Error: `QUALITY_MISMATCH` (400)
+8. **Cargo Space**: Target must have available cargo capacity
+   - Error: `CARGO_FULL` (400)
+9. **Valid Resource**: `resource_type` must be a known resource
+   - Error: `INVALID_RESOURCE` (400)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "transfer_id": "770e8400-e29b-41d4-a716-446655440000",
+    "source_remaining": 30,
+    "target_new_total": 20,
+    "volume_transferred": 20.0,
+    "timestamp": "2025-12-27T12:34:56.123456Z",
+    "success": true
+  }
+}
+```
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request parameters
+- `NOT_FOUND` (404) - Source or target not found
+- `NOT_IN_SECTOR` (400) - Entities in different sectors
+- `NOT_IN_RANGE` (400) - Ships too far apart (>1000 units)
+- `INSUFFICIENT_QUANTITY` (400) - Source doesn't have enough resources
+- `QUALITY_MISMATCH` (400) - Quality doesn't match source resource
+- `CARGO_FULL` (400) - Target cargo is full
+- `INVALID_RESOURCE` (400) - Unknown resource type
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Not authorized to transfer from source
+
+**Code**: `/services/worldsim/internal/inventory/service.go:145-230`
+
+---
+
+## Mining
+
+### GET /v1/mining/nodes
+
+Get minable resource nodes in a sector.
+
+**Authentication**: Required
+
+**Query Parameters**:
+- `sector` (required): Sector coordinates (format: `x,y,z` or `x.y.z`)
+- `resource_type` (optional): Filter by specific resource type (e.g., `iron_ore`)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "sector": "0,0,0",
+    "nodes": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "sector": "0,0,0",
+        "position": {"x": 1500.5, "y": -200.3, "z": 800.0},
+        "resource_type": "iron_ore",
+        "richness": 0.75,
+        "quantity_remaining": 4500,
+        "quality_mean": "1.0",
+        "respawns": true
+      },
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440001",
+        "sector": "0,0,0",
+        "position": {"x": -3200.0, "y": 500.0, "z": -150.0},
+        "resource_type": "hydrogen",
+        "richness": 0.90,
+        "quantity_remaining": 8200,
+        "quality_mean": "1.2",
+        "respawns": true
+      }
+    ]
+  }
+}
+```
+
+**Field Descriptions**:
+- `richness`: Node richness (0.0 to 1.0) - affects extraction rate and quality
+  - 0.0-0.3: Poor node (slow extraction)
+  - 0.3-0.7: Average node
+  - 0.7-1.0: Rich node (fast extraction, higher quality)
+- `quantity_remaining`: Units of resource left in node
+- `quality_mean`: Average quality of extracted resources (decimal string)
+- `respawns`: Whether node regenerates over time (tick-based)
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Missing or invalid sector parameter
+- `SECTOR_NOT_FOUND` (404) - Sector does not exist
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/worldsim/internal/mining/handlers.go:26-71`
+
+---
+
+### POST /v1/mining/extract
+
+Extract resources from a mining node.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "resource_node_id": "550e8400-e29b-41d4-a716-446655440000",
+  "quantity": 50
+}
+```
+
+**Validation Rules** (Code: `/services/worldsim/internal/mining/service.go:185-290`):
+
+1. **Required Fields**: All fields must be provided and valid UUIDs
+   - Error: `VALIDATION_ERROR` (400)
+2. **Ship Existence**: Ship must exist and be owned by authenticated profile
+   - Error: `SHIP_NOT_FOUND` (404)
+3. **Node Existence**: Resource node must exist
+   - Error: `NODE_NOT_FOUND` (404)
+4. **Same Sector**: Ship and node must be in same sector
+   - Error: `NOT_IN_SECTOR` (400)
+5. **Range Check**: Ship must be within **1000 units** of node
+   - Error: `NOT_IN_RANGE` (400)
+6. **Ship Not Docked**: Cannot mine while docked
+   - Error: `SHIP_DOCKED` (400)
+7. **Ship Not in Combat**: Cannot mine during combat
+   - Error: `SHIP_IN_COMBAT` (400)
+8. **Node Has Resources**: Node must have sufficient quantity
+   - Error: `NODE_DEPLETED` (400)
+9. **Cargo Space**: Ship must have cargo space for extraction
+   - Error: `CARGO_FULL` (400)
+10. **Positive Quantity**: Quantity must be > 0
+    - Error: `VALIDATION_ERROR` (400)
+
+**Extraction Mechanics**:
+- **Extraction Rate**: `base_rate × richness × ship_mining_bonus`
+  - Base rate: 10 units/second
+  - Richness: Node richness multiplier (0.0-1.0)
+  - Ship mining bonus: From ship stats/equipment
+- **Quality Calculation**: `quality_mean ± random_variance`
+  - Variance: ±0.2 from node's quality_mean
+  - Clamped to range [0.5, 2.0]
+- **Node Depletion**: Quantity deducted atomically from node
+- **Respawn**: Nodes regenerate 10% of max quantity every 60 seconds (tick-based)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "resource_type": "iron_ore",
+    "quantity_extracted": 50,
+    "quality": 1.15,
+    "cargo_remaining": 105,
+    "node_quantity_remaining": 4450,
+    "extraction_time": 5.0,
+    "timestamp": "2025-12-27T12:34:56.123456Z"
+  }
+}
+```
+
+**Field Descriptions**:
+- `quality`: Actual quality of extracted resources (varies based on node quality_mean)
+- `extraction_time`: Time taken to extract (seconds)
+- `cargo_remaining`: Ship's available cargo space after extraction
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request parameters
+- `SHIP_NOT_FOUND` (404) - Ship does not exist
+- `NODE_NOT_FOUND` (404) - Resource node does not exist
+- `NOT_IN_SECTOR` (400) - Ship and node in different sectors
+- `NOT_IN_RANGE` (400) - Ship too far from node (>1000 units)
+- `SHIP_DOCKED` (400) - Ship must undock first
+- `SHIP_IN_COMBAT` (400) - Cannot mine during combat
+- `NODE_DEPLETED` (400) - Node has insufficient resources
+- `CARGO_FULL` (400) - Ship cargo is full
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Ship not owned by authenticated profile
+
+**NATS Events Published**:
+- `game.mining.extract` - Broadcast extraction event
+- `player.{owner_id}` - Personal notification to ship owner
+
+**Code**: `/services/worldsim/internal/mining/service.go:185-290`
+
+---
+
+## Station Services
+
+**NEW IN vNext 2.0**: These endpoints were completely missing from API-BLUEPRINT.md v1.2 but are fully implemented and functional.
+
+### POST /v1/stations/refuel
+
+Purchase fuel for a docked ship.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "amount": 50.0
+}
+```
+
+**Field Descriptions**:
+- `amount`: Units of fuel to purchase (0 or omitted = fill tank to capacity)
+
+**Validation Rules** (Code: `/services/worldsim/internal/stationservices/service.go:80-201`):
+
+1. **Ship Existence**: Ship must exist and be owned by authenticated profile
+   - Error: `SHIP_NOT_FOUND` (404)
+2. **Ship Docked**: Ship must be docked at a station
+   - Error: `SHIP_NOT_DOCKED` (400)
+3. **Station Has Service**: Station must offer `refuel` or `market` service
+   - Error: `SERVICE_NOT_AVAILABLE` (400)
+4. **Not Already Full**: Ship fuel must be < fuel_capacity
+   - Error: `FUEL_FULL` (400)
+5. **Valid Amount**: If specified, amount must be > 0
+   - Error: `INVALID_AMOUNT` (400)
+6. **Sufficient Credits**: Player must have enough credits to pay
+   - Error: `INSUFFICIENT_CREDITS` (402)
+
+**Pricing Calculation**:
+- **Base Cost**: `base_price + (price_per_unit × amount)`
+- **Reputation Discount**: 0% to max_discount% based on faction reputation
+  - Formula: `(reputation / 1000) × max_discount_percent`
+  - Reputation range: 0 (neutral) to 1000 (exalted)
+  - Negative reputation = no discount
+- **Final Cost**: `base_cost × (1 - discount_percent / 100)`
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "amount_added": 50.0,
+    "cost_paid": "450.00",
+    "fuel_remaining": 149.8,
+    "credits_remaining": "9550.00",
+    "discount_applied": "5.0"
+  }
+}
+```
+
+**Field Descriptions**:
+- `cost_paid`: Credits deducted from player account (decimal string)
+- `credits_remaining`: Player's remaining credits after purchase
+- `discount_applied`: Discount percentage applied (0 if no discount)
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body or ship_id format
+- `SHIP_NOT_FOUND` (404) - Ship does not exist
+- `SHIP_NOT_DOCKED` (400) - Ship must be docked at a station
+- `SERVICE_NOT_AVAILABLE` (400) - Station does not offer refueling
+- `FUEL_FULL` (400) - Ship fuel tank already at capacity
+- `INVALID_AMOUNT` (400) - Amount must be > 0 (if specified)
+- `INSUFFICIENT_CREDITS` (402) - Player does not have enough credits
+- `PRICING_NOT_CONFIGURED` (500) - Station service pricing not set up
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Ship not owned by authenticated profile
+
+**NATS Events Published**:
+- `game.services.fuel_purchase` - Broadcast refuel event
+- `game.economy.credits_changed` - Credits deduction event
+- `player.{owner_id}` - Personal notifications
+
+**Code**: `/services/worldsim/internal/stationservices/service.go:80-201`
+
+**Impact**: HIGH - Core gameplay feature for sustaining ship operations. Missing documentation prevented frontend implementation.
+
+---
+
+### POST /v1/stations/repair
+
+Repair ship hull and/or shields at a docked station.
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "ship_id": "c8cad90d-fec3-4f88-a59f-2a80d074eced",
+  "repair_hull": true,
+  "repair_shield": true
+}
+```
+
+**Field Descriptions**:
+- `repair_hull`: Whether to repair hull damage (boolean)
+- `repair_shield`: Whether to repair shield damage (boolean)
+- At least one must be `true`
+
+**Validation Rules** (Code: `/services/worldsim/internal/stationservices/service.go:224-348`):
+
+1. **Ship Existence**: Ship must exist and be owned by authenticated profile
+   - Error: `SHIP_NOT_FOUND` (404)
+2. **Ship Docked**: Ship must be docked at a station
+   - Error: `SHIP_NOT_DOCKED` (400)
+3. **Station Has Service**: Station must offer `repair` service
+   - Error: `SERVICE_NOT_AVAILABLE` (400)
+4. **Damage Exists**: Ship must have hull or shield damage
+   - Error: `SHIP_FULLY_REPAIRED` (400)
+5. **Sufficient Credits**: Player must have enough credits to pay
+   - Error: `INSUFFICIENT_CREDITS` (402)
+
+**Pricing Calculation**:
+- **Repair Points**: Sum of hull damage and shield damage to be repaired
+  - Hull needed: `hull_max - hull_current`
+  - Shield needed: `shield_max - shield_current`
+- **Base Cost**: `base_price + (price_per_unit × total_repair_points)`
+- **Reputation Discount**: Same formula as refueling
+- **Final Cost**: `base_cost × (1 - discount_percent / 100)`
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "hull_repaired": 150,
+    "shield_repaired": 50,
+    "cost_paid": "1200.00",
+    "hull_current": 1000,
+    "shield_current": 300,
+    "credits_remaining": "8350.00",
+    "discount_applied": "10.0"
+  }
+}
+```
+
+**Field Descriptions**:
+- `hull_repaired`: Hull points restored
+- `shield_repaired`: Shield points restored
+- `hull_current`: Hull points after repair (should equal `hull_max`)
+- `shield_current`: Shield points after repair (should equal `shield_max`)
+- `cost_paid`: Credits deducted from player account (decimal string)
+- `discount_applied`: Discount percentage applied (0 if no discount)
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Invalid request body or ship_id format
+- `SHIP_NOT_FOUND` (404) - Ship does not exist
+- `SHIP_NOT_DOCKED` (400) - Ship must be docked at a station
+- `SERVICE_NOT_AVAILABLE` (400) - Station does not offer repair
+- `SHIP_FULLY_REPAIRED` (400) - Ship has no damage
+- `INSUFFICIENT_CREDITS` (402) - Player does not have enough credits
+- `PRICING_NOT_CONFIGURED` (500) - Station service pricing not set up
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+- `FORBIDDEN` (403) - Ship not owned by authenticated profile
+
+**NATS Events Published**:
+- `game.services.repair` - Broadcast repair event
+- `game.economy.credits_changed` - Credits deduction event
+- `player.{owner_id}` - Personal notifications
+
+**Code**: `/services/worldsim/internal/stationservices/service.go:224-348`
+
+**Impact**: HIGH - Essential for combat recovery and ship maintenance. Missing documentation prevented frontend implementation.
+
+---
+
+## Summary
+
+This document covers all **World Simulation Service** endpoints. Key features:
+
+1. **Sectors**: Static info and real-time state for navigation
+2. **Movement**: Jump (with fuel formula), dock (5000 unit range), undock
+3. **Inventory**: Resource management with quality system
+4. **Mining**: Node discovery and extraction (1000 unit range, respawning nodes)
+5. **Station Services** (NEW): Refuel and repair with reputation discounts
+
+**Critical Corrections from v1.2**:
+- ✅ **Station Services**: Refuel and repair endpoints now documented (were completely missing)
+- ✅ **Fuel Formula**: `distance × (1.0 / speed) × sector_modifier`
+- ✅ **Range Checks**: Docking (5000 units), mining (1000 units), ship-to-ship transfer (1000 units)
+- ✅ **Reputation Discounts**: Both refuel and repair support faction-based discounts
+- ✅ **Resource Quality**: Quality range [0.5, 2.0] affects pricing and crafting
+
+**Next Steps**:
+- Read `03C-COMBAT.apib` for combat mechanics
+- Read `03D-ECONOMY.apib` for trading and markets
+- Read `04-REALTIME-SSE.apib` for movement event subscriptions
+
+---
+
+**End of 03B-WORLDSIM.apib**

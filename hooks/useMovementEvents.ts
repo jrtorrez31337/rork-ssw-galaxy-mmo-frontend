@@ -1,120 +1,57 @@
-import { useEffect, useRef } from 'react';
-import EventSource from 'react-native-sse';
-import { storage } from '@/utils/storage';
+import { useEffect } from 'react';
+import { sseManager } from '@/lib/sseManager';
 import {
   MovementEvent,
   ShipJumpedEvent,
   ShipDockedEvent,
   ShipUndockedEvent,
 } from '@/types/movement';
-import { config } from '@/constants/config';
 
 /**
- * Hook to subscribe to real-time movement events via Server-Sent Events (SSE)
+ * Hook to subscribe to real-time movement events via SSE Manager
  *
- * Note: React Native doesn't have native EventSource support.
- * This implementation will need one of the following:
- * 1. A polyfill like 'react-native-sse' or 'react-native-event-source'
- * 2. WebSocket implementation instead
- * 3. Polling fallback
+ * Per A3-bug-remediation-plan.md Bug #2:
+ * - Uses centralized SSE Manager instead of creating own connection
+ * - All events come through single multiplexed connection
  *
- * For now, this is structured for SSE with EventSource API.
- * Install: npm install react-native-sse
+ * Listens for:
+ * - ship_jumped: Ship completed hyperjump to new sector
+ * - ship_docked: Ship docked at a station
+ * - ship_undocked: Ship undocked from a station
  */
 
 type EventCallback = (event: MovementEvent) => void;
 
 export function useMovementEvents(playerId: string, onEvent: EventCallback) {
-  const eventSourceRef = useRef<any>(null);
-
   useEffect(() => {
     if (!playerId) return;
 
-    const setupSSE = async () => {
-      const accessToken = await storage.getAccessToken();
-      if (!accessToken) {
-        console.log('[SSE] No access token available');
-        return;
-      }
+    console.log('[Movement Events] Setting up listeners via SSE Manager');
 
-      console.log(`[SSE] Connecting to Fanout service for movement events`);
-      console.log(`[SSE] URL: ${config.FANOUT_URL}/v1/stream/gameplay`);
+    // Handle ship_jumped event
+    const cleanupJumped = sseManager.addEventListener('ship_jumped', (data: any) => {
+      console.log('[Movement Events] Ship jumped:', data);
+      onEvent({ type: 'SHIP_JUMPED', data: data.payload || data });
+    });
 
-      // Connect to Fanout service through Gateway (SSE stream)
-      const eventSource = new EventSource(`${config.FANOUT_URL}/v1/stream/gameplay`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+    // Handle ship_docked event
+    const cleanupDocked = sseManager.addEventListener('ship_docked', (data: any) => {
+      console.log('[Movement Events] Ship docked:', data);
+      onEvent({ type: 'SHIP_DOCKED', data: data.payload || data });
+    });
 
-      eventSource.addEventListener('open' as any, async () => {
-        console.log('[SSE] Connected to Fanout service (movement)');
+    // Handle ship_undocked event
+    const cleanupUndocked = sseManager.addEventListener('ship_undocked', (data: any) => {
+      console.log('[Movement Events] Ship undocked:', data);
+      onEvent({ type: 'SHIP_UNDOCKED', data: data.payload || data });
+    });
 
-        // Subscribe to movement channels
-        // Note: Using direct Fanout access for subscribe due to Gateway routing complexity
-        try{
-          const subscribeResponse = await fetch(`http://192.168.122.76:8086/v1/stream/gameplay/subscribe`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-              channels: [
-                `player.${playerId}`,
-                'game.movement',
-              ],
-            }),
-          });
-
-          if (subscribeResponse.ok) {
-            console.log('[SSE] Subscribed to movement channels');
-          } else {
-            console.error('[SSE] Subscription failed:', await subscribeResponse.text());
-          }
-        } catch (error) {
-          console.error('[SSE] Subscribe error:', error);
-        }
-      });
-
-      // Use standard 'message' event for all SSE events
-      eventSource.addEventListener('message' as any, (event: any) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[SSE] Received movement event:', data.type, data);
-
-          // Handle different movement event types
-          switch (data.type) {
-            case 'ship_jumped':
-              onEvent({ type: 'SHIP_JUMPED', data: data.payload || data });
-              break;
-            case 'ship_docked':
-              onEvent({ type: 'SHIP_DOCKED', data: data.payload || data });
-              break;
-            case 'ship_undocked':
-              onEvent({ type: 'SHIP_UNDOCKED', data: data.payload || data });
-              break;
-          }
-        } catch (error) {
-          console.error('[SSE] Parse error:', error);
-        }
-      });
-
-      eventSource.addEventListener('error' as any, (error: any) => {
-        console.error('[SSE] Movement connection error:', error);
-      });
-
-      eventSourceRef.current = eventSource;
-    };
-
-    setupSSE();
-
+    // Cleanup all listeners on unmount
     return () => {
-      if (eventSourceRef.current) {
-        console.log('[SSE] Closing movement connection');
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      console.log('[Movement Events] Cleaning up listeners');
+      cleanupJumped();
+      cleanupDocked();
+      cleanupUndocked();
     };
   }, [playerId, onEvent]);
 }

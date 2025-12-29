@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { sseManager } from '@/lib/sseManager';
 import { useTravelStore } from '@/stores/travelStore';
@@ -33,6 +33,10 @@ export function useTravelEvents(
   const queryClient = useQueryClient();
   const { setActiveTravel, clearTravel } = useTravelStore();
 
+  // Use ref for callbacks to avoid re-running effect when callbacks change
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
+
   useEffect(() => {
     if (!playerId) return;
 
@@ -62,9 +66,7 @@ export function useTravelEvents(
       queryClient.invalidateQueries({ queryKey: ['ship'] });
       queryClient.invalidateQueries({ queryKey: ['ships'] });
 
-      if (callbacks?.onTravelStarted) {
-        callbacks.onTravelStarted(data);
-      }
+      callbacksRef.current?.onTravelStarted?.(data);
     });
 
     // Handle game.travel.completed event
@@ -80,9 +82,7 @@ export function useTravelEvents(
       queryClient.invalidateQueries({ queryKey: ['stations'] });
       queryClient.invalidateQueries({ queryKey: ['npcs'] });
 
-      if (callbacks?.onTravelCompleted) {
-        callbacks.onTravelCompleted(data);
-      }
+      callbacksRef.current?.onTravelCompleted?.(data);
     });
 
     // Handle game.travel.cancelled event
@@ -96,9 +96,7 @@ export function useTravelEvents(
       queryClient.invalidateQueries({ queryKey: ['ship'] });
       queryClient.invalidateQueries({ queryKey: ['ships'] });
 
-      if (callbacks?.onTravelCancelled) {
-        callbacks.onTravelCancelled(data);
-      }
+      callbacksRef.current?.onTravelCancelled?.(data);
     });
 
     // Handle game.travel.interrupted event (interdiction)
@@ -112,9 +110,7 @@ export function useTravelEvents(
       queryClient.invalidateQueries({ queryKey: ['ship'] });
       queryClient.invalidateQueries({ queryKey: ['ships'] });
 
-      if (callbacks?.onTravelInterrupted) {
-        callbacks.onTravelInterrupted(data);
-      }
+      callbacksRef.current?.onTravelInterrupted?.(data);
     });
 
     // Cleanup all listeners on unmount
@@ -125,5 +121,5 @@ export function useTravelEvents(
       cleanupCancelled();
       cleanupInterrupted();
     };
-  }, [playerId, queryClient, callbacks, setActiveTravel, clearTravel]);
+  }, [playerId, queryClient, setActiveTravel, clearTravel]);
 }

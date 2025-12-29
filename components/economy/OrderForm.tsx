@@ -39,6 +39,7 @@ export default function OrderForm({
     setOrderPrice,
     setOrderQuantity,
     resetOrderForm,
+    addActiveOrder,
   } = useTradingStore();
 
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -60,6 +61,20 @@ export default function OrderForm({
       queryClient.invalidateQueries({ queryKey: ['trades', marketId, commodity] });
       queryClient.invalidateQueries({ queryKey: ['user'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+
+      // Add to active orders if pending or partial
+      if (response.status === 'pending' || response.status === 'partial') {
+        addActiveOrder({
+          order_id: response.order_id,
+          market_id: marketId,
+          commodity,
+          side: orderType,
+          price: orderPrice,
+          quantity: orderQuantity,
+          status: response.status,
+          created_at: new Date().toISOString(),
+        });
+      }
 
       // Show success message
       if (response.status === 'filled') {

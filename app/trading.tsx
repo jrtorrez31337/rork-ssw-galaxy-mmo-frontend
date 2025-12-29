@@ -20,6 +20,7 @@ import MarketSelector from '@/components/economy/MarketSelector';
 import OrderbookView from '@/components/economy/OrderbookView';
 import OrderForm from '@/components/economy/OrderForm';
 import TradeHistory from '@/components/economy/TradeHistory';
+import ActiveOrdersList from '@/components/economy/ActiveOrdersList';
 import CreditsDisplay from '@/components/credits/CreditsDisplay';
 import Colors from '@/constants/colors';
 import type { Ship } from '@/types/api';
@@ -184,6 +185,12 @@ export default function TradingScreen() {
                 playerCredits={playerCredits}
                 playerInventory={commodityInventory}
               />
+            </View>
+
+            {/* Active Orders */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>My Active Orders</Text>
+              <ActiveOrdersList marketId={marketId} />
             </View>
 
             {/* Trade History */}

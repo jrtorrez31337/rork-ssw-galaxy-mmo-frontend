@@ -12,12 +12,19 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface RefreshTokenRequest {
+  refresh_token: string;
+}
+
 export const authApi = {
   signup: (data: SignupRequest) =>
     apiClient.post<AuthResponse>('/auth/signup', data),
 
   login: (data: LoginRequest) =>
     apiClient.post<AuthResponse>('/auth/login', data),
+
+  refreshToken: (data: RefreshTokenRequest) =>
+    apiClient.post<AuthResponse>('/auth/refresh', data),
 
   getMe: () => apiClient.get<UserProfile>('/auth/me'),
 };

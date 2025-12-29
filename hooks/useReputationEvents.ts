@@ -1,21 +1,17 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import EventSource from 'react-native-sse';
-import { storage } from '@/utils/storage';
+import { sseManager } from '@/lib/sseManager';
 import { ReputationTierChangeEvent } from '@/types/api';
-import { config } from '@/constants/config';
 
 /**
- * Hook to subscribe to real-time reputation tier change events via Server-Sent Events (SSE)
+ * Hook to subscribe to real-time reputation events via SSE Manager
  *
- * Note: React Native doesn't have native EventSource support.
- * This implementation will need one of the following:
- * 1. A polyfill like 'react-native-sse' or 'react-native-event-source'
- * 2. WebSocket implementation instead
- * 3. Polling fallback
+ * Per A3-bug-remediation-plan.md Bug #2:
+ * - Uses centralized SSE Manager instead of creating own connection
+ * - All events come through single multiplexed connection
  *
- * For now, this is structured for SSE with EventSource API.
- * Install: npm install react-native-sse
+ * Per 04-REALTIME-SSE.apib (line 726-744):
+ * - game.social.reputation: Faction reputation changes
  */
 
 export interface ReputationEventCallbacks {
@@ -27,100 +23,33 @@ export function useReputationEvents(
   playerId: string,
   callbacks?: ReputationEventCallbacks
 ) {
-  const eventSourceRef = useRef<any>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!playerId) return;
 
-    const setupSSE = async () => {
-      const accessToken = await storage.getAccessToken();
-      if (!accessToken) {
-        console.log('[SSE] No access token available');
-        return;
+    console.log('[Reputation Events] Setting up listeners via SSE Manager');
+
+    // Handle game.social.reputation event per 04-REALTIME-SSE.apib (line 726-744)
+    const cleanupReputation = sseManager.addEventListener('game.social.reputation', (data: any) => {
+      if (data.player_id !== playerId) return;
+      console.log('[Reputation Events] Reputation change:', data);
+
+      // Invalidate reputation queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['reputations', playerId] });
+      queryClient.invalidateQueries({ queryKey: ['reputationHistory', playerId] });
+
+      if (callbacks?.onTierChange) {
+        // Pass data as-is - callback can handle the API format
+        // API format: player_id, faction_id, old_reputation, new_reputation, change, reason
+        callbacks.onTierChange(data as ReputationTierChangeEvent);
       }
+    });
 
-      console.log(`[SSE] Connecting to Fanout service for reputation events`);
-      console.log(`[SSE] URL: ${config.FANOUT_URL}/v1/stream/gameplay`);
-
-      // Connect to Fanout service through Gateway (SSE stream)
-      const eventSource = new EventSource(`${config.FANOUT_URL}/v1/stream/gameplay`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      eventSource.addEventListener('open' as any, async () => {
-        console.log('[SSE] Connected to Fanout service (reputation)');
-
-        // Subscribe to social reputation channels
-        // Note: Using direct Fanout access for subscribe due to Gateway routing complexity
-        try {
-          const subscribeResponse = await fetch(`http://192.168.122.76:8086/v1/stream/gameplay/subscribe`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-              channels: [
-                `player.${playerId}`,
-                'social.reputation',
-              ],
-            }),
-          });
-
-          if (subscribeResponse.ok) {
-            console.log('[SSE] Subscribed to reputation channels');
-          } else {
-            console.error('[SSE] Subscription failed:', await subscribeResponse.text());
-          }
-        } catch (error) {
-          console.error('[SSE] Subscribe error:', error);
-        }
-      });
-
-      // Use standard 'message' event for all SSE events
-      eventSource.addEventListener('message' as any, (event: any) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[SSE] Received reputation event:', data.type, data);
-
-          if (data.type === 'reputation_tier_change' && data.player_id === playerId) {
-            // Invalidate reputation queries to refresh data
-            queryClient.invalidateQueries({ queryKey: ['reputations', playerId] });
-            queryClient.invalidateQueries({
-              queryKey: ['reputationHistory', playerId],
-            });
-
-            // Call custom callback if provided
-            if (callbacks?.onTierChange) {
-              callbacks.onTierChange(data);
-            }
-          }
-        } catch (error) {
-          console.error('[SSE] Parse error:', error);
-        }
-      });
-
-      eventSource.addEventListener('error' as any, (error: any) => {
-        console.error('[SSE] Reputation connection error:', error);
-        if (callbacks?.onError) {
-          callbacks.onError(error);
-        }
-      });
-
-      eventSourceRef.current = eventSource;
-    };
-
-    setupSSE();
-
+    // Cleanup listener on unmount
     return () => {
-      if (eventSourceRef.current) {
-        console.log('[SSE] Closing reputation connection');
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      console.log('[Reputation Events] Cleaning up listeners');
+      cleanupReputation();
     };
   }, [playerId, queryClient, callbacks]);
 }

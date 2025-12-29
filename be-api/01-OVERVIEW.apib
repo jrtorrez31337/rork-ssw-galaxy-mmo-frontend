@@ -1,0 +1,582 @@
+FORMAT: 1A
+HOST: http://192.168.122.76:8080/v1
+
+# SSW Galaxy MMO - Global API Standards (vNext 2.0)
+
+**Version**: 2.0 (vNext)
+**Status**: Implementation-Grounded
+**Last Verified**: 2025-12-27
+**Base URL**: `http://192.168.122.76:8080/v1`
+**Backend IP**: `192.168.122.76`
+
+---
+
+## Document Purpose
+
+This document defines the **global API standards** for SSW Galaxy MMO. All endpoints across all 11 microservices adhere to these conventions unless explicitly noted otherwise.
+
+**Scope**:
+- Base URLs and environment configuration
+- Global authentication model (JWT structure, lifetimes, claims)
+- Error response envelope format
+- Rate limiting enforcement details
+- CORS configuration
+- Pagination standard
+- Request ID propagation
+- Success response envelope
+
+**Not Covered Here**:
+- Endpoint-specific documentation (see 02-AUTH-ACCOUNTS.apib, 03B-WORLDSIM.apib, etc.)
+- Event schemas (see 04-REALTIME-SSE.apib)
+- Error code catalog (see 06-APPENDICES.md)
+
+---
+
+## Base URLs and Environments
+
+### Production Environment
+
+| Component | URL | Port | Internal Port |
+|-----------|-----|------|---------------|
+| **API Gateway** | `http://192.168.122.76:8080/v1` | 8080 | N/A |
+| **Identity Service** | Internal only | N/A | 8081 |
+| **WorldSim Service** | Internal only | N/A | 8082 |
+| **Combat Service** | Internal only | N/A | 8083 |
+| **Economy Service** | Internal only | N/A | 8084 |
+| **Social Service** | Internal only | N/A | 8085 |
+| **Fanout Service (SSE)** | Internal only | N/A | 8086 |
+| **Chat Service** | Internal only | N/A | 8087 |
+| **Procgen Service** | Internal only | N/A | 8088 |
+| **Moderation Service** | Internal only | N/A | 8089 |
+| **Missions Service** | Internal only | N/A | 8006 |
+
+**Client Access**: All requests MUST go through the API Gateway at `192.168.122.76:8080`. Direct service access is not permitted for external clients.
+
+**Protocol**: HTTP (TLS/HTTPS not yet configured)
+
+**SSE Endpoint**: `http://192.168.122.76:8080/v1/stream/gameplay` (canonical)
+**Legacy SSE**: `http://192.168.122.76:8080/v1/events` (still works, proxied to fanout)
+
+---
+
+## Global Authentication Model
+
+### Overview
+
+SSW Galaxy MMO uses **JWT-based authentication** with ECDSA-256 signing. The system supports:
+- Access tokens (short-lived, 15 minutes)
+- Refresh tokens (long-lived, 30 days)
+- Session-based revocation (Redis-backed)
+- Token rotation on refresh (security best practice)
+
+**Code**: `/services/identity/internal/service/auth.go`, `/pkg/middleware/auth.go`
+
+---
+
+### JWT Token Structure
+
+#### Access Token
+
+**Lifetime**: 15 minutes (900 seconds)
+**Signing Algorithm**: ECDSA-256
+**Storage**: Client-side (localStorage, sessionStorage, or memory)
+
+**Claims**:
+```json
+{
+  "sub": "38a87211-63b6-409b-b433-8f443e333953",  // Subject: Profile ID
+  "aid": "7f3c8e12-4a9b-4d2f-9e1a-6c8d3f2e1b4a",  // Account ID
+  "sid": "9f35eeac-d06f-4e08-8088-171b1de020d4",  // Session ID
+  "exp": 1735310400,                              // Expiration (Unix timestamp)
+  "iat": 1735309500,                              // Issued At (Unix timestamp)
+  "iss": "ssw-galaxy-identity",                   // Issuer
+  "type": "access"                                 // Token type
+}
+```
+
+**Field Descriptions**:
+- `sub` (Subject): Profile ID - the primary player identity, used for character/ship ownership
+- `aid` (Account ID): Account ID - the authentication account (email/password)
+- `sid` (Session ID): Session ID - unique identifier for this login session, used for logout
+- `exp` (Expiration): Unix timestamp when token becomes invalid
+- `iat` (Issued At): Unix timestamp when token was created
+- `iss` (Issuer): Always "ssw-galaxy-identity"
+- `type`: Always "access" for access tokens
+
+**Header Format**:
+```
+Authorization: Bearer eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Verification**:
+- Middleware validates signature using ECDSA public key
+- Checks expiration timestamp
+- Verifies session is not revoked (Redis lookup by `sid`)
+
+**Code**: `/services/identity/internal/service/auth.go:198-245` (token generation)
+
+---
+
+#### Refresh Token
+
+**Lifetime**: 30 days (2,592,000 seconds)
+**Signing Algorithm**: ECDSA-256
+**Storage**: Client-side (secure storage recommended)
+**Usage**: Only for `/v1/auth/refresh` endpoint
+
+**Claims**:
+```json
+{
+  "sub": "38a87211-63b6-409b-b433-8f443e333953",  // Profile ID
+  "aid": "7f3c8e12-4a9b-4d2f-9e1a-6c8d3f2e1b4a",  // Account ID
+  "sid": "9f35eeac-d06f-4e08-8088-171b1de020d4",  // Session ID
+  "exp": 1737902400,                              // Expiration (30 days)
+  "iat": 1735309500,                              // Issued At
+  "iss": "ssw-galaxy-identity",
+  "type": "refresh"                                // Token type
+}
+```
+
+**Token Rotation Behavior** (⚠️ CRITICAL):
+- When you call `POST /v1/auth/refresh`, you receive BOTH a new access token AND a new refresh token
+- The old refresh token is immediately revoked and cannot be reused
+- Clients MUST store the new refresh token from each refresh response
+- Failure to update the refresh token will result in authentication errors on next refresh
+
+**Code**: `/services/identity/internal/service/auth.go:298-350` (refresh with rotation)
+
+---
+
+### Authentication Flow
+
+#### Initial Login
+
+```
+Client                           Gateway                    Identity Service
+  |                                  |                              |
+  |--POST /v1/auth/login------------>|                              |
+  |  {email, password}               |--HTTP POST /auth/login------>|
+  |                                  |                              |
+  |                                  |                  [Validate credentials]
+  |                                  |                  [Create session in Redis]
+  |                                  |                  [Generate access + refresh tokens]
+  |                                  |                              |
+  |                                  |<----{access_token, refresh_token, session_id}
+  |<-200 OK {tokens}----------------|                              |
+  |                                  |                              |
+  [Store access_token]               |                              |
+  [Store refresh_token]              |                              |
+  [Store session_id (optional)]      |                              |
+```
+
+**Response**:
+```json
+{
+  "data": {
+    "access_token": "eyJhbGci...",
+    "refresh_token": "8YYgCWnj...",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "session_id": "9f35eeac-d06f-4e08-8088-171b1de020d4"
+  }
+}
+```
+
+---
+
+#### Token Refresh (⚠️ Note Rotation)
+
+```
+Client                           Gateway                    Identity Service
+  |                                  |                              |
+  |--POST /v1/auth/refresh---------->|                              |
+  |  {refresh_token}                 |--HTTP POST /auth/refresh---->|
+  |                                  |                              |
+  |                                  |           [Validate refresh token]
+  |                                  |           [Check session not revoked]
+  |                                  |           [Generate NEW access token]
+  |                                  |           [Generate NEW refresh token (rotation!)]
+  |                                  |           [Revoke old refresh token]
+  |                                  |                              |
+  |                                  |<----{new_access, new_refresh, expires_in}
+  |<-200 OK {tokens}----------------|                              |
+  |                                  |                              |
+  [Store NEW access_token]           |                              |
+  [Store NEW refresh_token]  <-- ⚠️ CRITICAL!                      |
+```
+
+**Response**:
+```json
+{
+  "data": {
+    "access_token": "eyJhbGci...",     // New access token
+    "refresh_token": "9ZZhDXok...",    // NEW refresh token (rotated)
+    "token_type": "Bearer",
+    "expires_in": 900
+  }
+}
+```
+
+**⚠️ CRITICAL**: The response includes a **new refresh token**. The old refresh token is immediately revoked. Clients MUST update their stored refresh token.
+
+---
+
+## Global Error Envelope Format
+
+### Error Response Structure
+
+**All errors** across all services use this standardized format:
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error description"
+  }
+}
+```
+
+**✅ CORRECTION FROM v1.2**:
+- `request_id` is in the **response header**, NOT in the error body
+- `timestamp` is NOT included in error responses
+- Error envelope is minimal: only `code` and `message`
+
+**Response Headers** (on error):
+```
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+X-Request-ID: 7f3c8e12-4a9b-4d2f-9e1a-6c8d3f2e1b4a
+```
+
+**Code**: All services use shared error writing pattern
+
+---
+
+### HTTP Status Code Conventions
+
+| HTTP Status | Usage | Example Error Codes |
+|-------------|-------|---------------------|
+| `200 OK` | Successful request | N/A |
+| `201 Created` | Resource created (signup, character, ship, mission accept) | N/A |
+| `400 Bad Request` | Client error (validation, invalid input, state violation) | `VALIDATION_ERROR`, `INSUFFICIENT_FUEL`, `SHIP_DOCKED`, `CARGO_FULL` |
+| `401 Unauthorized` | Authentication failure (missing/invalid/expired token) | `AUTH_REQUIRED`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `INVALID_CREDENTIALS` |
+| `402 Payment Required` | Insufficient credits (economy operations) | `INSUFFICIENT_CREDITS` |
+| `403 Forbidden` | Authorized but not permitted (account suspended) | `ACCOUNT_SUSPENDED` |
+| `404 Not Found` | Resource does not exist | `NOT_FOUND`, `SHIP_NOT_FOUND`, `SECTOR_NOT_FOUND`, `STATION_NOT_FOUND` |
+| `409 Conflict` | Conflict with current state (duplicate, name taken) | `EMAIL_EXISTS`, `NAME_TAKEN`, `ROOM_FULL`, `STATION_FULL` |
+| `429 Too Many Requests` | Rate limit exceeded | `RATE_LIMITED` |
+| `500 Internal Server Error` | Server-side error | `SERVER_ERROR`, `GENERATION_ERROR`, `PUBLISH_ERROR` |
+
+**Complete Error Catalog**: See `06-APPENDICES.md` for all 57 error codes.
+
+---
+
+## Rate Limiting
+
+### Enforcement Status
+
+**✅ CORRECTED FROM v1.2**: Rate limiting **IS ENFORCED** as of vNext. The v1.2 documentation incorrectly stated it was not enforced.
+
+**Implementation**:
+- Redis-backed rate limiting
+- IP-based and account-based limits
+- Token bucket algorithm
+- Enforced at gateway and service level
+
+**Code**: `/pkg/middleware/ratelimit.go`, gateway and identity service route configuration
+
+---
+
+### Rate Limit Tiers
+
+#### Authentication Endpoints (Identity Service)
+
+| Endpoint | Limit | Scope | Status Code |
+|----------|-------|-------|-------------|
+| `POST /v1/auth/signup` | 3 requests / hour | Per IP | 429 |
+| `POST /v1/auth/login` | 5 requests / 15 min | Per IP | 429 |
+| `POST /v1/auth/login` | 10 requests / 15 min | Per account (email) | 429 |
+| `POST /v1/auth/refresh` | 10 requests / min | Per IP | 429 |
+| All auth endpoints | 100 requests / min | Per IP (gateway level) | 429 |
+
+**Rationale**:
+- Signup: Prevent mass account creation
+- Login: Prevent brute force attacks (dual limit: IP + account)
+- Refresh: Prevent token farming
+
+---
+
+#### General API Endpoints (Gateway Level)
+
+| Category | Limit | Scope | Status Code |
+|----------|-------|-------|-------------|
+| All API endpoints | 1000 requests / min | Composite (IP + account) | 429 |
+
+**Implementation**: Gateway applies composite rate limiting based on IP address and authenticated account ID.
+
+---
+
+### Rate Limit Response
+
+**Headers** (included on all responses):
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 73
+X-RateLimit-Reset: 1735310460
+```
+
+**Error Response** (when limit exceeded):
+```json
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Rate limit exceeded. Retry after 45 seconds."
+  }
+}
+```
+
+**HTTP Status**: `429 Too Many Requests`
+
+**Retry-After Header**:
+```
+Retry-After: 45
+```
+
+**Client Recommendation**: Implement exponential backoff on 429 responses.
+
+---
+
+## CORS Configuration
+
+### Allowed Origins
+
+**Development Mode**:
+```
+Access-Control-Allow-Origin: *
+```
+
+**Production Mode** (planned):
+- Whitelist specific frontend domains
+- Example: `https://game.sswgalaxy.com`, `https://admin.sswgalaxy.com`
+
+---
+
+### CORS Headers
+
+**Preflight Response**:
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+Access-Control-Allow-Headers: Authorization, Content-Type, X-Player-ID, X-Session-ID, X-Idempotency-Key
+Access-Control-Max-Age: 3600
+```
+
+**Actual Response**:
+```
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: X-Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+```
+
+---
+
+## Pagination Standard
+
+### Current State
+
+**⚠️ Inconsistency Notice**: Pagination is **inconsistent** across services. This section documents the various implementations.
+
+---
+
+### Pattern A (Social Service)
+
+**Query Parameters**:
+- `limit` (optional): Number of results (default: 20, max: 100)
+- `offset` (optional): Number of items to skip (default: 0)
+
+**Response Format**:
+```json
+{
+  "data": {
+    "items": [...],
+    "total": 150,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+---
+
+### Pattern B (Missions Service)
+
+**Response Format**:
+```json
+{
+  "data": {
+    "missions": [...],
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+**Note**: Does NOT include `total` field.
+
+---
+
+### Pattern C (No Pagination)
+
+**Endpoints**:
+- `GET /v1/characters/by-profile/{profile_id}`
+- `GET /v1/ships/by-owner/{owner_id}`
+- `GET /v1/inventory/{owner_id}`
+
+**Response Format**:
+```json
+{
+  "data": [...]  // Array of all results
+}
+```
+
+**⚠️ Risk**: Unbounded result sets could cause performance issues.
+
+---
+
+## Success Response Envelope
+
+**All successful responses** wrap data in a `data` object:
+
+```json
+{
+  "data": {
+    // Response payload
+  }
+}
+```
+
+**Single Resource**:
+```json
+{
+  "data": {
+    "id": "uuid",
+    "name": "Captain Nova",
+    "created_at": "2025-12-23T18:04:48.883723Z"
+  }
+}
+```
+
+**List (No Pagination)**:
+```json
+{
+  "data": [
+    {"id": "uuid-1", "name": "Item 1"},
+    {"id": "uuid-2", "name": "Item 2"}
+  ]
+}
+```
+
+---
+
+## Request ID Propagation
+
+### Headers
+
+**Request Header** (optional, client can provide):
+```
+X-Request-ID: 7f3c8e12-4a9b-4d2f-9e1a-6c8d3f2e1b4a
+```
+
+**Response Header** (always included):
+```
+X-Request-ID: 7f3c8e12-4a9b-4d2f-9e1a-6c8d3f2e1b4a
+```
+
+**Usage**:
+- Clients can generate and send a request ID for tracking
+- On error, clients can provide the request ID to support for debugging
+- Backend services log request ID with all operations
+
+---
+
+## Idempotency
+
+### Current Status
+
+**❌ NOT IMPLEMENTED** - Despite documentation in v1.2, idempotency enforcement is not functional.
+
+**Header Accepted**:
+```
+X-Idempotency-Key: 7f3c8e12-4a9b-4d2f-9e1a-6c8d3f2e1b4a
+```
+
+**Endpoints Accepting Header**:
+- `POST /v1/auth/signup`
+
+**Behavior**:
+- Header is parsed but NOT used for deduplication
+- Duplicate requests are NOT prevented
+
+**Status**: **Planned** for future implementation
+
+---
+
+## Time Format
+
+**All timestamps** use ISO 8601 format with UTC timezone:
+
+**Format**: `YYYY-MM-DDTHH:MM:SS.ssssssZ`
+
+**Example**: `2025-12-23T18:04:48.883723Z`
+
+**Fields**: `created_at`, `updated_at`, `assigned_at`, `completed_at`, `expires_at`, `last_jump_at`
+
+---
+
+## UUID Format
+
+**All entity IDs** use UUID v4 (random):
+
+**Format**: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx`
+
+**Example**: `38a87211-63b6-409b-b433-8f443e333953`
+
+**Exception**: Sector coordinates use `x,y,z` format (e.g., `0,0,0`) instead of UUID.
+
+---
+
+## Sector Coordinate Format
+
+**Pattern**: `x,y,z` or `x.y.z` (both accepted)
+
+**Examples**:
+- `0,0,0` (Sol System)
+- `1,2,-3` (Other sector)
+- `0.0.0` (Alternative format)
+
+**Range**: Integers from -2^31 to 2^31-1
+
+---
+
+## Summary
+
+This document defines the **global standards** for the SSW Galaxy MMO API. Key takeaways:
+
+1. **All requests go through the gateway** at `192.168.122.76:8080/v1`
+2. **JWT-based authentication** with 15-minute access tokens and 30-day refresh tokens
+3. **⚠️ Token rotation on refresh** - clients MUST store new refresh tokens
+4. **Error responses** use `{error: {code, message}}` format; `request_id` is in header
+5. **✅ Rate limiting IS ENFORCED** (corrected from v1.2)
+6. **⚠️ Pagination is inconsistent** - documented per-endpoint in service files
+7. **Request IDs** are propagated across services for tracing
+8. **Success responses** wrap data in `{data: {...}}` envelope
+9. **❌ Idempotency is NOT enforced** (planned feature)
+
+**Next Steps**:
+- Read `02-AUTH-ACCOUNTS.apib` for authentication endpoint details
+- Read `03A-IDENTITY.apib` for character/ship creation
+- Read `03B-WORLDSIM.apib` for gameplay endpoints
+- Read `06-APPENDICES.md` for error code catalog
+
+---
+
+**End of 01-OVERVIEW.apib**

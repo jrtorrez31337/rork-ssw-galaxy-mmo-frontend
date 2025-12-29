@@ -1,0 +1,579 @@
+FORMAT: 1A
+HOST: http://192.168.122.76:8080/v1
+
+# SSW Galaxy MMO - Mission System (vNext 2.0)
+
+**Version**: 2.0 (vNext)
+**Status**: Implementation-Grounded
+**Last Verified**: 2025-12-27
+**Service**: Missions (Internal Port: 8006)
+
+---
+
+## Document Purpose
+
+This document covers the **Mission System**, responsible for:
+- **Mission Templates**: Reusable mission definitions
+- **Mission Assignment**: Players accepting missions
+- **Progress Tracking**: Automatic objective completion via game events
+- **Rewards**: Credits, reputation, items upon completion
+
+**Code**: `/services/missions/`
+
+**Related Documents**:
+- See `01-OVERVIEW.apib` for global standards
+- See `04-REALTIME-SSE.apib` for mission events
+- See `03F-SOCIAL.apib` for reputation rewards
+
+---
+
+## Mission System Overview
+
+### Mission Lifecycle
+
+1. **Available**: Mission template visible to player (based on reputation, level, location)
+2. **Accepted**: Player accepts mission, instance created with objectives
+3. **In Progress**: Game events automatically update objective progress
+4. **Completed**: All objectives met, rewards distributed
+5. **Failed**: Mission expired or critical objective failed
+6. **Abandoned**: Player voluntarily abandons mission
+
+### Objective Types
+
+| Type | Description | Tracked By |
+|------|-------------|------------|
+| `kill_npcs` | Destroy specific NPC types | Combat service events |
+| `mine_resources` | Extract resources | Mining service events |
+| `visit_sector` | Travel to sector | Movement service events |
+| `dock_at_station` | Dock at specific station | Movement service events |
+| `deliver_cargo` | Deliver resources to location | Inventory service events |
+| `trade_volume` | Complete trades worth X credits | Economy service events |
+
+---
+
+## Endpoints
+
+### GET /v1/missions/available
+
+List missions available to the player based on location, reputation, and level.
+
+**Authentication**: Required
+
+**Query Parameters**:
+- `player_id` (required): Profile ID
+- `sector` (optional): Filter by sector (shows sector-specific missions)
+- `faction_id` (optional): Filter by faction
+
+**Response** (200 OK):
+```json
+{
+  "data": [
+    {
+      "template_id": "template-uuid-1",
+      "template_name": "Clear Pirate Threat",
+      "description": "Eliminate hostile pirate ships threatening shipping lanes in sector 3,4,-2",
+      "faction_id": "terran_federation",
+      "faction_name": "Terran Federation",
+      "mission_type": "combat",
+      "difficulty": "medium",
+      "estimated_duration": 30,
+      "reward_credits": 500,
+      "reward_reputation": 50,
+      "reward_items": [],
+      "requirements": {
+        "min_reputation": 0,
+        "min_level": 5,
+        "required_sector": "3,4,-2"
+      },
+      "objectives": [
+        {
+          "type": "kill_npcs",
+          "description": "Destroy 5 pirate ships",
+          "target_type": "pirate",
+          "target_count": 5
+        }
+      ],
+      "expires_in": 7200,
+      "is_repeatable": false,
+      "cooldown_hours": 0
+    },
+    {
+      "template_id": "template-uuid-2",
+      "template_name": "Resource Extraction Contract",
+      "description": "Mine and deliver 100 units of iron ore to Alpha Station",
+      "faction_id": "void_consortium",
+      "faction_name": "Void Consortium",
+      "mission_type": "mining",
+      "difficulty": "easy",
+      "estimated_duration": 45,
+      "reward_credits": 300,
+      "reward_reputation": 25,
+      "reward_items": [
+        {"item_type": "mining_laser_upgrade", "quantity": 1}
+      ],
+      "requirements": {
+        "min_reputation": -250,
+        "min_level": 1,
+        "required_sector": null
+      },
+      "objectives": [
+        {
+          "type": "mine_resources",
+          "description": "Extract 100 units of iron ore",
+          "resource_type": "iron_ore",
+          "target_count": 100
+        },
+        {
+          "type": "deliver_cargo",
+          "description": "Deliver iron ore to Alpha Station",
+          "target_station": "station-uuid-alpha",
+          "resource_type": "iron_ore",
+          "target_count": 100
+        }
+      ],
+      "expires_in": 10800,
+      "is_repeatable": true,
+      "cooldown_hours": 24
+    }
+  ]
+}
+```
+
+**Field Descriptions**:
+- `difficulty`: `easy`, `medium`, `hard`, `extreme`
+- `estimated_duration`: Minutes to complete (average)
+- `expires_in`: Seconds until mission expires after acceptance
+- `is_repeatable`: Can be accepted again after completion
+- `cooldown_hours`: Hours before repeatable mission can be accepted again
+
+**Mission Types**:
+- `combat`: Kill NPCs, combat objectives
+- `mining`: Extract resources
+- `exploration`: Visit sectors, discover anomalies
+- `trade`: Complete trades, deliver cargo
+- `mixed`: Multiple objective types
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Missing or invalid player_id
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/missions/internal/handlers/http.go:25-90`
+
+---
+
+### GET /v1/missions/active
+
+List player's active (in-progress) missions.
+
+**Authentication**: Required
+
+**Query Parameters**:
+- `player_id` (required): Profile ID
+
+**Response** (200 OK):
+```json
+{
+  "data": [
+    {
+      "mission_id": "mission-uuid-1",
+      "template_id": "template-uuid-1",
+      "template_name": "Clear Pirate Threat",
+      "description": "Eliminate hostile pirate ships threatening shipping lanes in sector 3,4,-2",
+      "faction_id": "terran_federation",
+      "status": "in_progress",
+      "assigned_at": "2025-12-27T10:00:00Z",
+      "expires_at": "2025-12-27T12:00:00Z",
+      "time_remaining": 5400,
+      "reward_credits": 500,
+      "reward_reputation": 50,
+      "objectives": [
+        {
+          "objective_id": "obj-uuid-1",
+          "type": "kill_npcs",
+          "description": "Destroy 5 pirate ships",
+          "target_count": 5,
+          "current_count": 3,
+          "completed": false,
+          "progress": 0.60
+        }
+      ],
+      "overall_progress": 0.60
+    }
+  ]
+}
+```
+
+**Field Descriptions**:
+- `status`: `in_progress`, `ready_to_complete` (all objectives done)
+- `time_remaining`: Seconds until mission expires
+- `overall_progress`: 0.0 to 1.0 (average of all objective progress)
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Missing or invalid player_id
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/missions/internal/handlers/http.go:95-150`
+
+---
+
+### GET /v1/missions/completed
+
+List player's completed mission history.
+
+**Authentication**: Required
+
+**Query Parameters**:
+- `player_id` (required): Profile ID
+- `limit` (optional): Number of missions (default: 20, max: 100)
+- `offset` (optional): Pagination offset (default: 0)
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "missions": [
+      {
+        "mission_id": "mission-uuid-old",
+        "template_name": "Resource Extraction Contract",
+        "faction_id": "void_consortium",
+        "status": "completed",
+        "assigned_at": "2025-12-26T10:00:00Z",
+        "completed_at": "2025-12-26T11:30:00Z",
+        "completion_time": 5400,
+        "credits_awarded": 300,
+        "reputation_awarded": 25,
+        "items_awarded": [
+          {"item_type": "mining_laser_upgrade", "quantity": 1}
+        ]
+      }
+    ],
+    "total": 15,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+**Field Descriptions**:
+- `completion_time`: Seconds taken to complete mission
+
+**Error Codes**:
+- `VALIDATION_ERROR` (400) - Missing or invalid player_id
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/missions/internal/handlers/http.go:155-210`
+
+---
+
+### GET /v1/missions/{mission_id}
+
+Get detailed information about a specific mission instance.
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `mission_id` (required): Mission instance UUID
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "mission_id": "mission-uuid-1",
+    "template_id": "template-uuid-1",
+    "template_name": "Clear Pirate Threat",
+    "description": "Eliminate hostile pirate ships threatening shipping lanes in sector 3,4,-2",
+    "faction_id": "terran_federation",
+    "faction_name": "Terran Federation",
+    "player_id": "player-uuid-1",
+    "status": "in_progress",
+    "assigned_at": "2025-12-27T10:00:00Z",
+    "expires_at": "2025-12-27T12:00:00Z",
+    "time_remaining": 5400,
+    "reward_credits": 500,
+    "reward_reputation": 50,
+    "reward_items": [],
+    "objectives": [
+      {
+        "objective_id": "obj-uuid-1",
+        "type": "kill_npcs",
+        "description": "Destroy 5 pirate ships",
+        "target_type": "pirate",
+        "target_count": 5,
+        "current_count": 3,
+        "completed": false,
+        "progress": 0.60,
+        "history": [
+          {
+            "event_id": "event-uuid-1",
+            "event_type": "npc_killed",
+            "npc_id": "npc-uuid-1",
+            "timestamp": "2025-12-27T10:15:00Z"
+          },
+          {
+            "event_id": "event-uuid-2",
+            "event_type": "npc_killed",
+            "npc_id": "npc-uuid-2",
+            "timestamp": "2025-12-27T10:30:00Z"
+          },
+          {
+            "event_id": "event-uuid-3",
+            "event_type": "npc_killed",
+            "npc_id": "npc-uuid-3",
+            "timestamp": "2025-12-27T10:45:00Z"
+          }
+        ]
+      }
+    ],
+    "overall_progress": 0.60
+  }
+}
+```
+
+**Error Codes**:
+- `MISSION_NOT_FOUND` (404) - Mission does not exist
+- `UNAUTHORIZED` (401) - Mission not owned by authenticated player
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/missions/internal/handlers/http.go:215-270`
+
+---
+
+### POST /v1/missions/{mission_template_id}/accept
+
+Accept an available mission.
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `mission_template_id` (required): Mission template UUID
+
+**Request Body**:
+```json
+{
+  "player_id": "player-uuid-1"
+}
+```
+
+**Validation Rules**:
+- Player meets reputation requirements
+- Player meets level requirements (if applicable)
+- Player in correct sector (if mission requires specific sector)
+- Player doesn't have too many active missions (max 10)
+- Mission not on cooldown (if repeatable)
+
+**Response** (201 Created):
+```json
+{
+  "data": {
+    "mission_id": "mission-uuid-new",
+    "template_id": "template-uuid-1",
+    "template_name": "Clear Pirate Threat",
+    "status": "in_progress",
+    "assigned_at": "2025-12-27T12:34:56.123456Z",
+    "expires_at": "2025-12-27T14:34:56.123456Z",
+    "objectives": [
+      {
+        "objective_id": "obj-uuid-new",
+        "type": "kill_npcs",
+        "description": "Destroy 5 pirate ships",
+        "target_count": 5,
+        "current_count": 0,
+        "completed": false
+      }
+    ]
+  }
+}
+```
+
+**NATS Event Published**:
+- Channel: `game.missions.assigned`, `player.{player_id}`
+- Event Type: `game.missions.assigned`
+
+**Error Codes**:
+- `MISSION_NOT_FOUND` (404) - Mission template does not exist
+- `VALIDATION_ERROR` (400) - Player doesn't meet requirements
+- `ACCEPT_FAILED` (400) - Mission acceptance failed (cooldown, max active, etc.)
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/missions/internal/handlers/http.go:275-340`
+
+---
+
+### POST /v1/missions/{mission_id}/abandon
+
+Abandon an active mission.
+
+**Authentication**: Required
+
+**URL Parameters**:
+- `mission_id` (required): Mission instance UUID
+
+**Request Body**:
+```json
+{
+  "player_id": "player-uuid-1"
+}
+```
+
+**Validation Rules**:
+- Mission must be active (not completed or failed)
+- Mission must be owned by player
+
+**Response** (200 OK):
+```json
+{
+  "data": {
+    "success": true,
+    "mission_id": "mission-uuid-1"
+  }
+}
+```
+
+**Effects**:
+- Mission status set to `abandoned`
+- Reputation penalty applied (typically -10 to -30 with mission faction)
+- Mission removed from active missions list
+
+**NATS Event Published**:
+- Channel: `game.missions.abandoned`, `player.{player_id}`
+- Event Type: `game.missions.abandoned`
+
+**Error Codes**:
+- `MISSION_NOT_FOUND` (404) - Mission does not exist
+- `VALIDATION_ERROR` (400) - Mission not active or not owned by player
+- `ABANDON_FAILED` (400) - Mission abandonment failed
+- `AUTH_REQUIRED` (401) - Missing or invalid authentication token
+
+**Code**: `/services/missions/internal/handlers/http.go:345-390`
+
+---
+
+## Mission Progression
+
+### Automatic Progress Tracking
+
+Missions track progress automatically by subscribing to game events from other services.
+
+**Event Subscriptions**:
+- `game.combat.outcome` - Tracks kill_npcs objectives
+- `game.mining.extract` - Tracks mine_resources objectives
+- `game.movement.jump` - Tracks visit_sector objectives
+- `game.movement.dock` - Tracks dock_at_station objectives
+- `game.economy.trade` - Tracks trade_volume objectives
+- `game.inventory.transfer` - Tracks deliver_cargo objectives
+
+**Example Flow**:
+1. Player accepts mission: "Kill 5 pirate ships"
+2. Player kills pirate ship in combat
+3. Combat service publishes `game.combat.outcome` event
+4. Missions service receives event, checks if it matches any active objectives
+5. If match, increment `current_count` for objective
+6. Publish `game.missions.objective` event with updated progress
+7. When `current_count` reaches `target_count`, mark objective as completed
+8. When all objectives completed, mark mission as completed and distribute rewards
+
+**Code**: `/services/missions/internal/events/handler.go:25-150`
+
+---
+
+## Mission Completion & Rewards
+
+### Automatic Completion
+
+When all objectives are completed, the mission is automatically marked as complete and rewards are distributed.
+
+**Reward Distribution**:
+1. **Credits**: Added to player account (Economy service call)
+2. **Reputation**: Updated faction standing (Social service call)
+3. **Items**: Added to inventory (WorldSim service call)
+
+**Transaction Logging**: All rewards logged with `transaction_type: "mission_reward"`
+
+**NATS Event Published**:
+- Channel: `game.missions.completed`, `player.{player_id}`
+- Event Type: `game.missions.completed`
+
+**Code**: `/services/missions/internal/service/rewards.go:25-120`
+
+---
+
+### Mission Failure
+
+Missions can fail due to:
+1. **Expiration**: Mission expires before completion
+2. **Critical Objective Failure**: Some objectives have fail conditions (e.g., "Don't let NPC escape")
+
+**Effects**:
+- Mission status set to `failed`
+- No rewards distributed
+- Possible reputation penalty (depends on mission)
+
+**NATS Event Published**:
+- Channel: `game.missions.failed`, `player.{player_id}`
+- Event Type: `game.missions.failed`
+
+---
+
+## Mission Events (SSE)
+
+See `04-REALTIME-SSE.apib` for detailed event schemas.
+
+**Event Types**:
+- `game.missions.assigned` - Mission accepted
+- `game.missions.objective` - Objective progress updated
+- `game.missions.completed` - Mission successfully completed
+- `game.missions.failed` - Mission failed or expired
+- `game.missions.abandoned` - Player abandoned mission
+
+**Client Integration Example**:
+```javascript
+// Subscribe to mission events
+eventSource.addEventListener('game.missions.objective', (e) => {
+  const data = JSON.parse(e.data);
+  console.log(`Objective ${data.objective_id}: ${data.current_count}/${data.target_count}`);
+
+  // Update mission UI
+  updateMissionProgress(data.mission_id, data.objective_id, data.progress);
+});
+
+eventSource.addEventListener('game.missions.completed', (e) => {
+  const data = JSON.parse(e.data);
+  console.log(`Mission completed! Earned ${data.credits_awarded} credits`);
+
+  // Show completion notification
+  showMissionComplete(data.mission_id, data.credits_awarded, data.reputation_awarded);
+});
+```
+
+---
+
+## Summary
+
+This document covers the **Mission System**:
+
+1. **GET /v1/missions/available**: List available missions (filtered by location, reputation)
+2. **GET /v1/missions/active**: List player's active missions with progress
+3. **GET /v1/missions/completed**: List completed mission history (paginated)
+4. **GET /v1/missions/{mission_id}**: Get detailed mission information
+5. **POST /v1/missions/{mission_template_id}/accept**: Accept mission
+6. **POST /v1/missions/{mission_id}/abandon**: Abandon active mission
+
+**Key Features**:
+- **6 Objective Types**: kill_npcs, mine_resources, visit_sector, dock_at_station, deliver_cargo, trade_volume
+- **Automatic Tracking**: Progress updates via game event subscriptions
+- **Automatic Rewards**: Credits, reputation, items distributed on completion
+- **Repeatable Missions**: Cooldown-based repeatable missions
+- **Expiration**: Time-limited missions
+- **Reputation Requirements**: Missions locked behind faction standing
+
+**Mission Lifecycle**:
+1. Available → 2. Accepted → 3. In Progress → 4. Completed (or Failed/Abandoned)
+
+**Next Steps**:
+- Read `04-REALTIME-SSE.apib` for mission event subscriptions
+- Read `03F-SOCIAL.apib` for reputation requirements and rewards
+- Read `03B-WORLDSIM.apib`, `03C-COMBAT.apib`, `03D-ECONOMY.apib` for actions that complete objectives
+
+---
+
+**End of 03E-MISSIONS.apib**

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ship as ShipIcon, Package, Navigation, TrendingUp, Pickaxe, Radar } from 'lucide-react-native';
-import { Text } from './';
+import { Text } from './Text';
 import { tokens } from '../theme';
 import type { Ship } from '@/types/api';
 
