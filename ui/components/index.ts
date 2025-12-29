@@ -32,3 +32,37 @@ export { CharacterCard } from './CharacterCard';
 export { Skeleton } from './Skeleton';
 export { ShipCardSkeleton } from './ShipCardSkeleton';
 export { CharacterCardSkeleton } from './CharacterCardSkeleton';
+
+// LCARS Component System
+export {
+  // Panels
+  Panel,
+  PanelSection,
+  PanelRow,
+  // Rails
+  Rail,
+  RailButton,
+  // Status indicators
+  StatusChip,
+  StatusDot,
+  StatusBadge,
+  // Alerts
+  Alert,
+  AlertBanner,
+  InlineAlert,
+  // Gauges
+  Gauge,
+  GaugeCluster,
+  SegmentedGauge,
+} from './LCARS';
+
+export type {
+  PanelVariant,
+  RailOrientation,
+  RailVariant,
+  ChipStatus,
+  ChipSize,
+  AlertPriority,
+  GaugeVariant,
+  GaugeSize,
+} from './LCARS';

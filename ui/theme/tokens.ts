@@ -1,71 +1,109 @@
 /**
  * Design Tokens - Space MMO Theme
- * "Command Console" aesthetic: Dark surfaces, neon accents, tactical readability
+ * LCARS-inspired "Bridge Console" aesthetic per UI/UX Doctrine
  */
 
 export const tokens = {
   // COLORS
   colors: {
-    // Backgrounds
+    // LCARS Primary Palette (per doctrine)
+    lcars: {
+      orange: '#FF9900',      // Primary interactive, combat
+      peach: '#FFCC99',       // Secondary interactive
+      violet: '#CC99CC',      // Communications
+      blue: '#9999FF',        // Navigation (periwinkle)
+      sky: '#99CCFF',         // Information
+      red: '#CC6666',         // Alert/danger
+      gold: '#FFCC00',        // Economy/value
+      green: '#99CC99',       // Success/health
+      beige: '#FFCC99',       // Inactive
+    },
+
+    // Semantic mappings (LCARS doctrine)
+    semantic: {
+      navigation: '#9999FF',    // Blue - travel, movement
+      combat: '#FF9900',        // Orange - weapons, tactical
+      economy: '#FFCC00',       // Gold - trade, currency
+      communications: '#CC99CC', // Violet - chat, faction
+      information: '#99CCFF',   // Sky - passive, neutral
+      danger: '#CC6666',        // Red - alerts, damage
+      success: '#99CC99',       // Green - health, positive
+      warning: '#FFCC00',       // Gold - caution
+    },
+
+    // Backgrounds (LCARS dark theme)
     background: {
-      primary: '#0a0e1a', // Deep space (main app bg)
-      secondary: '#141b2e', // Panel background
-      tertiary: '#1a2238', // Elevated surfaces
+      primary: '#000000',   // True black for viewport
+      secondary: '#1a1a2e', // Panel backgrounds
+      tertiary: '#252540',  // Elevated surfaces
+      space: '#000000',     // Viewport background
+      panel: '#1a1a2e',     // Dark blue-gray panels
+      bezel: '#0d0d1a',     // Frame borders
     },
 
     // Surfaces
     surface: {
-      base: '#141b2e',
-      raised: '#1a2238',
+      base: '#1a1a2e',
+      raised: '#252540',
       overlay: '#1e293b',
-      card: '#1a2238',
+      card: '#1a1a2e',
       modal: '#141b2e',
     },
 
-    // Interactive
+    // Interactive (using LCARS orange as primary)
     primary: {
-      main: '#00d4ff', // Cyan (main CTA, selected items)
-      dark: '#0099cc', // Darker cyan (hover/pressed)
-      light: '#33e0ff', // Lighter cyan (subtle accents)
+      main: '#FF9900',      // LCARS orange
+      dark: '#CC7A00',      // Darker orange
+      light: '#FFAD33',     // Lighter orange
       alpha: {
-        10: 'rgba(0, 212, 255, 0.1)',
-        20: 'rgba(0, 212, 255, 0.2)',
-        30: 'rgba(0, 212, 255, 0.3)',
+        10: 'rgba(255, 153, 0, 0.1)',
+        20: 'rgba(255, 153, 0, 0.2)',
+        30: 'rgba(255, 153, 0, 0.3)',
       },
     },
 
     secondary: {
-      main: '#7c3aed', // Purple (secondary actions)
-      dark: '#6d28d9',
-      light: '#8b5cf6',
+      main: '#CC99CC',      // LCARS violet
+      dark: '#AA77AA',
+      light: '#DDAADD',
     },
 
-    // Semantic
-    success: '#10b981', // Green (success states)
-    warning: '#f59e0b', // Amber (warnings, caution)
-    danger: '#ef4444', // Red (errors, critical, destructive)
-    info: '#3b82f6', // Blue (info, neutral notifications)
+    // Semantic (legacy compat + LCARS)
+    success: '#99CC99',     // LCARS green
+    warning: '#FFCC00',     // LCARS gold
+    danger: '#CC6666',      // LCARS red
+    info: '#99CCFF',        // LCARS sky
 
-    // Text
+    // Text (LCARS uses orange/peach for headers)
     text: {
-      primary: '#e2e8f0', // Main text (high contrast)
-      secondary: '#94a3b8', // Secondary text (medium contrast)
-      tertiary: '#64748b', // Tertiary text (low contrast)
-      disabled: '#475569', // Disabled text
-      inverse: '#0a0e1a', // Text on light backgrounds
+      primary: '#FF9900',   // LCARS orange for headers
+      secondary: '#FFCC99', // Peach for body
+      tertiary: '#666680',  // Dimmed
+      disabled: '#444455',  // Disabled text
+      inverse: '#000000',   // Text on light backgrounds
+      body: '#CCCCDD',      // Standard body text
     },
 
     // Borders
     border: {
-      default: '#1e293b', // Default borders
-      light: '#334155', // Lighter borders (elevated surfaces)
-      focus: '#00d4ff', // Focus/active borders
-      error: '#ef4444', // Error state borders
+      default: '#333344',   // Default borders
+      light: '#444466',     // Lighter borders
+      focus: '#FF9900',     // Focus/active (LCARS orange)
+      error: '#CC6666',     // Error state
+    },
+
+    // Alert colors (per doctrine cascade)
+    alert: {
+      green: '#99CC99',     // Normal operations
+      yellow: '#FFCC00',    // Caution
+      red: '#CC6666',       // Combat/emergency
+      redPulse: 'rgba(204, 102, 102, 0.3)', // Red alert overlay
+      yellowVignette: 'rgba(255, 204, 0, 0.1)', // Yellow alert vignette
     },
 
     // Special
-    backdrop: 'rgba(10, 14, 26, 0.8)', // Modal backdrop
-    overlay: 'rgba(20, 27, 46, 0.95)', // Glass overlay (HUD)
+    backdrop: 'rgba(0, 0, 0, 0.8)',
+    overlay: 'rgba(26, 26, 46, 0.95)',
   },
 
   // SPACING (8px base unit)
