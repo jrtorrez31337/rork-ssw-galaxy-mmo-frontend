@@ -1,68 +1,37 @@
-import { Tabs } from 'expo-router';
-import { MapPin, Target, Ship, ScrollText, User } from 'lucide-react-native';
+import { Slot } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '@/ui/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PerformanceOverlay } from '@/components/PerformanceOverlay';
+import { CockpitShell } from '@/components/shell';
+
+/**
+ * Tab Layout - LCARS Cockpit Shell
+ *
+ * Per UI/UX Doctrine and Implementation Architecture:
+ * - CockpitShell wraps all game content
+ * - Shell MUST NEVER remount during session
+ * - HeaderBar, LeftRail, CommandBar are persistent
+ * - Tab router hidden; LeftRail handles navigation state
+ * - Content renders inside shell viewport via Slot
+ *
+ * Navigation is now state-based (via cockpitStore), not route-based.
+ * The Slot renders whichever tab content is currently active.
+ */
 
 export default function TabLayout() {
   return (
-    <ErrorBoundary fallbackTitle="Tab Navigation Error">
-      <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          height: tokens.layout.tabBar.height,
-          backgroundColor: tokens.colors.surface.base,
-          borderTopColor: tokens.colors.border.default,
-          borderTopWidth: 1,
-          paddingBottom: tokens.spacing[2],
-          paddingTop: tokens.spacing[2],
-        },
-        tabBarActiveTintColor: tokens.colors.primary.main,
-        tabBarInactiveTintColor: tokens.colors.text.secondary,
-        tabBarLabelStyle: {
-          fontSize: tokens.typography.fontSize.xs,
-          fontWeight: tokens.typography.fontWeight.semibold,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="map"
-        options={{
-          title: 'Map',
-          tabBarIcon: ({ color, size }) => <MapPin size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="ops"
-        options={{
-          title: 'Ops',
-          tabBarIcon: ({ color, size }) => <Target size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="fleet"
-        options={{
-          title: 'Fleet',
-          tabBarIcon: ({ color, size }) => <Ship size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="feed"
-        options={{
-          title: 'Feed',
-          tabBarIcon: ({ color, size }) => <ScrollText size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="me"
-        options={{
-          title: 'Me',
-          tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
-        }}
-      />
-    </Tabs>
-    <PerformanceOverlay />
+    <ErrorBoundary fallbackTitle="Bridge System Error">
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: tokens.colors.background.primary }}
+        edges={['top', 'bottom']}
+      >
+        <CockpitShell>
+          {/* Tab content renders here inside the viewport */}
+          <Slot />
+        </CockpitShell>
+        <PerformanceOverlay />
+      </SafeAreaView>
     </ErrorBoundary>
   );
 }
