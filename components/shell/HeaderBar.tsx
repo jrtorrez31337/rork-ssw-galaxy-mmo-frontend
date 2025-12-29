@@ -6,6 +6,8 @@ import { useShipStatus } from '@/hooks/useShipStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
+import { useFlightStore, selectThrottle, selectProfile } from '@/stores/flightStore';
+import { computeFlightMetrics, getThrottleColor, getSpeedStatus } from '@/lib/flight/metrics';
 
 /**
  * HeaderBar (Status Rail)
@@ -19,6 +21,48 @@ interface VitalBarProps {
   max: number;
   color: string;
   critical?: boolean;
+}
+
+/**
+ * ThrottleIndicator - Per Cinematic Flight Doctrine §4.1
+ * Shows throttle position and current speed
+ * Always visible in persistent HUD
+ */
+function ThrottleIndicator() {
+  const flightState = useFlightStore();
+  const metrics = computeFlightMetrics(flightState);
+  const throttleColor = getThrottleColor(metrics.throttlePercent);
+  const speedStatus = getSpeedStatus(metrics.speedPercent);
+
+  return (
+    <View style={styles.throttleContainer}>
+      <View style={styles.throttleHeader}>
+        <Text style={styles.throttleLabel}>THR</Text>
+        <Text style={[styles.throttleValue, { color: throttleColor }]}>
+          {metrics.throttleDisplay}
+        </Text>
+      </View>
+      <View style={styles.throttleBarOuter}>
+        <View
+          style={[
+            styles.throttleBarInner,
+            {
+              width: `${metrics.throttlePercent * 100}%`,
+              backgroundColor: throttleColor,
+            },
+          ]}
+        />
+        {/* Speed marker on throttle bar */}
+        <View
+          style={[
+            styles.speedMarker,
+            { left: `${metrics.speedPercent * 100}%` },
+          ]}
+        />
+      </View>
+      <Text style={styles.speedStatus}>{speedStatus}</Text>
+    </View>
+  );
 }
 
 function VitalBar({ label, current, max, color, critical }: VitalBarProps) {
@@ -165,8 +209,10 @@ export function HeaderBar() {
         </Text>
       </View>
 
-      {/* Center: Vitals */}
+      {/* Center: Vitals + Throttle */}
       <View style={styles.centerSection}>
+        <ThrottleIndicator />
+        <View style={styles.vitalsDivider} />
         <VitalBar
           label="HULL"
           current={shipStatus?.hull.current || 0}
@@ -288,5 +334,59 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: tokens.colors.text.tertiary,
     marginTop: 2,
+  },
+  // Throttle indicator styles (per Cinematic Flight Doctrine §4.1)
+  throttleContainer: {
+    alignItems: 'center',
+    minWidth: 55,
+  },
+  throttleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  throttleLabel: {
+    fontSize: 9,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.text.tertiary,
+  },
+  throttleValue: {
+    fontSize: 10,
+    fontWeight: tokens.typography.fontWeight.bold,
+    fontFamily: tokens.typography.fontFamily.mono,
+  },
+  throttleBarOuter: {
+    width: 48,
+    height: 8,
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginTop: 2,
+    position: 'relative',
+  },
+  throttleBarInner: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  speedMarker: {
+    position: 'absolute',
+    top: 0,
+    width: 2,
+    height: '100%',
+    backgroundColor: tokens.colors.text.primary,
+    marginLeft: -1,
+  },
+  speedStatus: {
+    fontSize: 8,
+    fontWeight: tokens.typography.fontWeight.semibold,
+    color: tokens.colors.text.tertiary,
+    marginTop: 1,
+    textTransform: 'uppercase',
+  },
+  vitalsDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: tokens.colors.border.default,
+    marginHorizontal: tokens.spacing[2],
   },
 });

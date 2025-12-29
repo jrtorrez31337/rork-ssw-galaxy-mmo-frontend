@@ -7,6 +7,7 @@ import { LeftRail } from './LeftRail';
 import { CommandBar } from './CommandBar';
 import { AlertOverlay } from './AlertOverlay';
 import { ContextualPanel, PanelRouter } from '@/components/panels';
+import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 
 /**
  * CockpitShell - Persistent Bridge Frame
@@ -54,6 +55,11 @@ export function CockpitShell({ children }: CockpitShellProps) {
   const markShellMounted = useCockpitStore((s) => s.markShellMounted);
   const shellMounted = useCockpitStore((s) => s.shellMounted);
   const mountId = useRef<number | null>(null);
+
+  // Flight system integration (per Cinematic Flight Doctrine)
+  // Runs flight simulation tick and integrates with game state
+  useFlightTick(shellMounted);
+  useFlightIntegration({ autoLockControls: true });
 
   useEffect(() => {
     // Track mount count for debugging

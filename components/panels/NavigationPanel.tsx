@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Navigation, MapPin, Fuel, Clock, AlertTriangle } from 'lucide-react-native';
+import { Navigation, MapPin, Fuel, Clock, AlertTriangle, Gauge as GaugeIcon, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { Panel, Gauge, StatusChip, RailButton } from '@/ui/components';
 import { useBridgeState } from '@/hooks/useBridgeState';
 import { useTravelStateStore } from '@/stores/travelStateStore';
 import { useLocationStore } from '@/stores/locationStore';
+import { FlightPanel } from './FlightPanel';
 
 /**
  * NavigationPanel - NAV Rail Content
@@ -19,6 +20,7 @@ import { useLocationStore } from '@/stores/locationStore';
 
 export function NavigationPanel() {
   const { glance, navigation, situation } = useBridgeState();
+  const [flightPanelExpanded, setFlightPanelExpanded] = useState(false);
 
   const travelMode = useTravelStateStore((s) => s.mode);
   const hyperspacePhase = useTravelStateStore((s) => s.hyperspace.phase);
@@ -147,6 +149,32 @@ export function NavigationPanel() {
         </Panel>
       )}
 
+      {/* Flight Control - Per Cinematic Flight Doctrine §4.2 */}
+      {!isDocked && (
+        <View style={styles.panel}>
+          <TouchableOpacity
+            style={styles.flightPanelHeader}
+            onPress={() => setFlightPanelExpanded(!flightPanelExpanded)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.flightPanelHeaderLeft}>
+              <GaugeIcon size={16} color={tokens.colors.semantic.navigation} />
+              <Text style={styles.flightPanelTitle}>FLIGHT CONTROL</Text>
+            </View>
+            {flightPanelExpanded ? (
+              <ChevronUp size={18} color={tokens.colors.text.tertiary} />
+            ) : (
+              <ChevronDown size={18} color={tokens.colors.text.tertiary} />
+            )}
+          </TouchableOpacity>
+          {flightPanelExpanded && (
+            <View style={styles.flightPanelContent}>
+              <FlightPanel />
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Quick Navigation */}
       <Panel variant="navigation" title="QUICK NAV" style={styles.panel}>
         <View style={styles.quickNavGrid}>
@@ -253,5 +281,34 @@ const styles = StyleSheet.create({
     fontSize: tokens.typography.fontSize.xs,
     color: tokens.colors.text.secondary,
     textTransform: 'uppercase',
+  },
+  // Flight panel styles (per Cinematic Flight Doctrine)
+  flightPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: tokens.spacing[3],
+    backgroundColor: tokens.colors.background.secondary,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.colors.semantic.navigation + '40',
+  },
+  flightPanelHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+  },
+  flightPanelTitle: {
+    fontSize: tokens.typography.fontSize.sm,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.semantic.navigation,
+    textTransform: 'uppercase',
+  },
+  flightPanelContent: {
+    marginTop: tokens.spacing[2],
+    borderRadius: tokens.radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: tokens.colors.border.default,
   },
 });
