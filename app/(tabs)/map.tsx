@@ -10,6 +10,7 @@ import { shipApi } from '@/api/ships';
 import { npcApi } from '@/api/npc';
 import { combatApi } from '@/api/combat';
 import { movementApi } from '@/api/movement';
+import { sectorEntitiesApi, type SectorShip } from '@/api/sectorEntities';
 import { useCombatEvents } from '@/hooks/useCombatEvents';
 import { useTravelEvents } from '@/hooks/useTravelEvents';
 import { useSectorDeltas } from '@/hooks/useProcgenEvents';
@@ -48,12 +49,26 @@ export default function MapTab() {
   const currentShip = ships?.[0] || null;
   const currentSector = currentShip?.location_sector || '0.0.0';
 
-  // Fetch stations in current sector for mini-map
+  // Fetch stations in current sector (always visible - no scan required)
   const { data: stationsData } = useQuery({
-    queryKey: ['stations', currentSector],
-    queryFn: () => movementApi.getStations(currentSector),
+    queryKey: ['sector-stations', currentSector],
+    queryFn: () => sectorEntitiesApi.getStations(currentSector),
     enabled: !!currentShip && !currentShip.docked_at,
+    staleTime: 30000, // Cache for 30 seconds
   });
+
+  // Fetch ships in current sector (always visible - no scan required)
+  const { data: shipsData } = useQuery({
+    queryKey: ['sector-ships', currentSector],
+    queryFn: () => sectorEntitiesApi.getShips(currentSector),
+    enabled: !!currentShip && !currentShip.docked_at,
+    staleTime: 10000, // Cache for 10 seconds (ships move more often)
+    refetchInterval: 15000, // Refresh every 15 seconds
+  });
+
+  // Extract data from responses
+  const dbStations = stationsData?.data?.stations || [];
+  const otherShips: SectorShip[] = shipsData?.data?.ships || [];
 
   const { npcs, selectedNPC, setNPCs, setSelectedNPC, setLoading, setError } = useNPCStore();
   const { isInCombat, setCombatInstance } = useCombatStore();
@@ -258,6 +273,9 @@ export default function MapTab() {
                 selectedNPCId={selectedNPC?.entity_id}
                 sectorId={currentSector}
                 showProcgen={true}
+                dbStations={dbStations}
+                otherShips={otherShips}
+                currentShipId={currentShip?.id}
               />
             </View>
 
@@ -284,7 +302,7 @@ export default function MapTab() {
           {/* Mini-Map / Radar */}
           <MiniMap
             ship={currentShip}
-            stations={stationsData?.stations}
+            stations={dbStations}
             npcCount={npcs.length}
             onTap={() => setRadarExpanded(true)}
           />
@@ -294,7 +312,7 @@ export default function MapTab() {
             visible={radarExpanded}
             onClose={() => setRadarExpanded(false)}
             ship={currentShip}
-            stations={stationsData?.stations}
+            stations={dbStations}
             npcs={npcs}
             onSectorTap={(sector) => {
               setJumpTargetSector(sector);

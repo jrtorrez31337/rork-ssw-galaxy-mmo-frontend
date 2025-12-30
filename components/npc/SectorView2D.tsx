@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useEffect } from 'react';
-import Svg, { Circle, Polygon, Text as SvgText, G, Line } from 'react-native-svg';
+import Svg, { Circle, Polygon, Text as SvgText, G, Line, Rect } from 'react-native-svg';
 import Colors from '@/constants/colors';
 import type { NPCEntity } from '@/types/combat';
 import { getNPCColor } from '@/types/combat';
@@ -13,6 +13,8 @@ import {
   AnomalyMarker,
   PlanetMarker,
 } from '@/components/sector/ProcgenMarkers';
+import type { Station } from '@/types/movement';
+import type { SectorShip } from '@/api/sectorEntities';
 
 interface SectorView2DProps {
   npcs: NPCEntity[];
@@ -21,6 +23,12 @@ interface SectorView2DProps {
   selectedNPCId?: string;
   sectorId?: string;
   showProcgen?: boolean;
+  /** Database stations (always visible without scanning) */
+  dbStations?: Station[];
+  /** Other ships in sector (always visible without scanning) */
+  otherShips?: SectorShip[];
+  /** Current player's ship ID to exclude from display */
+  currentShipId?: string;
 }
 
 /**
@@ -34,6 +42,9 @@ export default function SectorView2D({
   selectedNPCId,
   sectorId,
   showProcgen = true,
+  dbStations = [],
+  otherShips = [],
+  currentShipId,
 }: SectorView2DProps) {
   // Use hook for dynamic window dimensions (fixes iOS Expo Go rendering issue)
   const { width: screenWidth } = useWindowDimensions();
@@ -232,6 +243,88 @@ export default function SectorView2D({
           </G>
         )}
 
+        {/* Database Stations (always visible - no scan required) */}
+        {dbStations.map((station) => {
+          const pos = to2D([station.position.x, station.position.y, station.position.z]);
+          return (
+            <G key={station.id}>
+              {/* Station square */}
+              <Rect
+                x={pos.x - 12}
+                y={pos.y - 12}
+                width={24}
+                height={24}
+                fill="#10b981"
+                stroke="#10b981"
+                strokeWidth={2}
+                rx={4}
+              />
+              {/* Glow effect */}
+              <Circle
+                cx={pos.x}
+                cy={pos.y}
+                r={25}
+                fill="#10b981"
+                opacity={0.2}
+              />
+              {/* Name label */}
+              <SvgText
+                x={pos.x}
+                y={pos.y - 20}
+                fontSize={9}
+                fill="#10b981"
+                textAnchor="middle"
+                fontWeight="600"
+              >
+                {station.name.length > 15 ? station.name.substring(0, 12) + '...' : station.name}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {/* Other Ships in Sector (always visible - no scan required) */}
+        {otherShips
+          .filter((ship) => ship.id !== currentShipId) // Exclude player's ship
+          .map((ship) => {
+            const pos = to2D([ship.position.x, ship.position.y, ship.position.z]);
+            // Use different colors for player ships vs NPC ships
+            const color = ship.is_npc ? '#f59e0b' : '#8b5cf6'; // Orange for NPC, Purple for players
+
+            return (
+              <G key={ship.id}>
+                {/* Ship diamond */}
+                <Polygon
+                  points={`${pos.x},${pos.y - 10} ${pos.x + 8},${pos.y} ${pos.x},${pos.y + 10} ${pos.x - 8},${pos.y}`}
+                  fill={color}
+                  stroke={color}
+                  strokeWidth={1.5}
+                  opacity={0.85}
+                />
+                {/* Glow effect */}
+                <Circle
+                  cx={pos.x}
+                  cy={pos.y}
+                  r={15}
+                  fill={color}
+                  opacity={0.15}
+                />
+                {/* Name label */}
+                {ship.name && (
+                  <SvgText
+                    x={pos.x}
+                    y={pos.y - 18}
+                    fontSize={8}
+                    fill={color}
+                    textAnchor="middle"
+                    fontWeight="500"
+                  >
+                    {ship.name.length > 12 ? ship.name.substring(0, 10) + '..' : ship.name}
+                  </SvgText>
+                )}
+              </G>
+            );
+          })}
+
         {/* Player ship */}
         {playerPosition && (
           <G>
@@ -332,6 +425,24 @@ export default function SectorView2D({
           <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
           <Text style={styles.legendText}>You</Text>
         </View>
+        {dbStations.length > 0 && (
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSquare, { backgroundColor: '#10b981' }]} />
+            <Text style={styles.legendText}>Station</Text>
+          </View>
+        )}
+        {otherShips.some((s) => !s.is_npc) && (
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDiamond, { backgroundColor: '#8b5cf6' }]} />
+            <Text style={styles.legendText}>Player</Text>
+          </View>
+        )}
+        {otherShips.some((s) => s.is_npc) && (
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDiamond, { backgroundColor: '#f59e0b' }]} />
+            <Text style={styles.legendText}>NPC Ship</Text>
+          </View>
+        )}
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
           <Text style={styles.legendText}>Pirate</Text>
@@ -350,12 +461,6 @@ export default function SectorView2D({
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#FFFF66' }]} />
                 <Text style={styles.legendText}>Star</Text>
-              </View>
-            )}
-            {sector.stations && sector.stations.length > 0 && (
-              <View style={styles.legendItem}>
-                <View style={[styles.legendSquare, { backgroundColor: '#10b981' }]} />
-                <Text style={styles.legendText}>Station</Text>
               </View>
             )}
             {sector.asteroidFields && sector.asteroidFields.length > 0 && (
@@ -409,6 +514,11 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 2,
+  },
+  legendDiamond: {
+    width: 10,
+    height: 10,
+    transform: [{ rotate: '45deg' }],
   },
   legendText: {
     fontSize: 12,
