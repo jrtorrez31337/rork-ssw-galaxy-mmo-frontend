@@ -59,7 +59,7 @@ export interface ScanResponse {
  * Execute a sector scan from the given ship
  */
 export async function executeScan(request: ScanRequest): Promise<ScanResponse> {
-  return apiClient.post<ScanResponse>('/v1/actions/scan', request);
+  return apiClient.post<ScanResponse>('/actions/scan', request);
 }
 
 /**
