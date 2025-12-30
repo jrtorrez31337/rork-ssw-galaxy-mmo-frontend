@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, ReactNode } from 'react';
+import React, { useEffect, useRef, useState, ReactNode } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,10 @@ import {
   PanResponder,
   useWindowDimensions,
   TouchableOpacity,
-  LayoutChangeEvent,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, GripHorizontal } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore, RailSystem, PanelState } from '@/stores/cockpitStore';
 
@@ -20,11 +20,14 @@ import { useCockpitStore, RailSystem, PanelState } from '@/stores/cockpitStore';
  * Per UI/UX Doctrine Section 2:
  * - Height: 40-60% of viewport height, slides up from bottom
  * - Three states: hidden, peek (header only), expanded
- * - Swipe down to minimize, swipe up to expand
+ * - Swipe down to minimize, swipe up to expand (HEADER ONLY - content is scrollable)
  * - Combat auto-minimizes to peek
  * - Only one panel visible at a time
  *
  * NOT a modal - renders inline within the cockpit shell.
+ *
+ * IMPORTANT: PanResponder is ONLY on the header/drag handle area.
+ * Content area uses ScrollView for normal touch interaction.
  */
 
 interface ContextualPanelProps {
@@ -33,21 +36,29 @@ interface ContextualPanelProps {
   headerRight?: ReactNode;
 }
 
-// Panel heights as percentage of available viewport
-const PEEK_HEIGHT = 56;  // Just the header
-const EXPANDED_RATIO = 0.55; // 55% of viewport
+// Panel heights
+const HEADER_HEIGHT = 56;  // Header with drag handle
+const PEEK_HEIGHT = HEADER_HEIGHT;  // Just the header when peeking
+const HEADER_BAR_HEIGHT = 56;  // Height of HeaderBar component
+const COMMAND_BAR_HEIGHT = 64;  // Height of CommandBar component
+const EXPANDED_RATIO = 0.55; // 55% of available viewport (not screen)
 
 export function ContextualPanel({ children, title, headerRight }: ContextualPanelProps) {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
+  const [viewportHeight, setViewportHeight] = useState(0);
 
   const panelState = useCockpitStore((s) => s.panelState);
   const activeRail = useCockpitStore((s) => s.activeRail);
   const setPanelState = useCockpitStore((s) => s.setPanelState);
   const alertLevel = useCockpitStore((s) => s.alertLevel);
 
-  // Calculate heights
-  const expandedHeight = screenHeight * EXPANDED_RATIO;
+  // Calculate available viewport height (screen minus header/command bars and safe areas)
+  // The panel lives inside the viewport which excludes HeaderBar and CommandBar
+  const availableHeight = screenHeight - HEADER_BAR_HEIGHT - COMMAND_BAR_HEIGHT - insets.top - insets.bottom;
+
+  // Calculate panel heights based on AVAILABLE viewport, not screen
+  const expandedHeight = Math.min(availableHeight * EXPANDED_RATIO, availableHeight - 50);
   const peekHeight = PEEK_HEIGHT;
 
   // Animation values
@@ -81,13 +92,14 @@ export function ContextualPanel({ children, title, headerRight }: ContextualPane
     }
   }, [alertLevel, panelState, setPanelState]);
 
-  // Pan responder for swipe gestures
-  const panResponder = useRef(
+  // Pan responder for swipe gestures - ONLY on header/drag handle
+  // Content area should NOT have pan responder to allow normal touch interaction
+  const headerPanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponder: () => true, // Always capture on header
       onMoveShouldSetPanResponder: (_, gesture) => {
-        // Only respond to significant vertical swipes
-        return Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
+        // Respond to any vertical movement on header
+        return Math.abs(gesture.dy) > 5;
       },
       onPanResponderMove: (_, gesture) => {
         const currentY = getTargetY(panelState);
@@ -163,32 +175,45 @@ export function ContextualPanel({ children, title, headerRight }: ContextualPane
           transform: [{ translateY }],
         },
       ]}
-      {...panResponder.panHandlers}
     >
-      {/* Header - always visible in peek/expanded */}
-      <TouchableOpacity
-        style={[styles.header, { borderLeftColor: railColor }]}
-        onPress={handleHeaderPress}
-        activeOpacity={0.8}
-      >
-        <View style={[styles.headerAccent, { backgroundColor: railColor }]} />
-        <Text style={[styles.headerTitle, { color: railColor }]}>
-          {title || activeRail}
-        </Text>
-        {headerRight && <View style={styles.headerRight}>{headerRight}</View>}
-        <View style={styles.headerChevron}>
-          {panelState === 'expanded' ? (
-            <ChevronDown size={20} color={tokens.colors.text.tertiary} />
-          ) : (
-            <ChevronUp size={20} color={tokens.colors.text.tertiary} />
-          )}
+      {/* Drag Handle Area - PanResponder ONLY here */}
+      <View {...headerPanResponder.panHandlers}>
+        {/* Visual drag handle */}
+        <View style={styles.dragHandleContainer}>
+          <View style={styles.dragHandle} />
         </View>
-      </TouchableOpacity>
 
-      {/* Content - only visible when expanded */}
-      <View style={styles.content}>
-        {children}
+        {/* Header - always visible in peek/expanded */}
+        <TouchableOpacity
+          style={[styles.header, { borderLeftColor: railColor }]}
+          onPress={handleHeaderPress}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.headerAccent, { backgroundColor: railColor }]} />
+          <Text style={[styles.headerTitle, { color: railColor }]}>
+            {title || activeRail}
+          </Text>
+          {headerRight && <View style={styles.headerRight}>{headerRight}</View>}
+          <View style={styles.headerChevron}>
+            {panelState === 'expanded' ? (
+              <ChevronDown size={20} color={tokens.colors.text.tertiary} />
+            ) : (
+              <ChevronUp size={20} color={tokens.colors.text.tertiary} />
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
+
+      {/* Content - scrollable, NO pan responder - normal touch interaction */}
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={true}
+        bounces={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {children}
+      </ScrollView>
     </Animated.View>
   );
 }
@@ -234,8 +259,20 @@ const styles = StyleSheet.create({
     borderTopRightRadius: tokens.radius.lg,
     overflow: 'hidden',
   },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: tokens.spacing[2],
+    paddingBottom: tokens.spacing[1],
+    backgroundColor: tokens.colors.background.tertiary,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: tokens.colors.border.light,
+  },
   header: {
-    height: PEEK_HEIGHT,
+    height: HEADER_HEIGHT - 12, // Account for drag handle area
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: tokens.spacing[3],
@@ -263,8 +300,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     paddingHorizontal: tokens.spacing[3],
     paddingTop: tokens.spacing[3],
+    paddingBottom: tokens.spacing[4],
   },
   panelContent: {
     flex: 1,
