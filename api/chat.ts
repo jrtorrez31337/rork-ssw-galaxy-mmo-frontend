@@ -14,11 +14,11 @@ import {
  */
 export const chatApi = {
   /**
-   * Get all available chat rooms
-   * GET /v1/chat/rooms
+   * Get all available chat rooms for a player
+   * GET /v1/chat/rooms?player_id={playerId}
    */
-  getRooms: () =>
-    apiClient.get<{ rooms: ChatRoom[] }>('/chat/rooms'),
+  getRooms: (playerId: string) =>
+    apiClient.get<{ rooms: ChatRoom[] }>(`/chat/rooms?player_id=${playerId}`),
 
   /**
    * Create a new chat room (custom rooms only)

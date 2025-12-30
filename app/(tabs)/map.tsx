@@ -11,6 +11,7 @@ import { npcApi } from '@/api/npc';
 import { combatApi } from '@/api/combat';
 import { movementApi } from '@/api/movement';
 import { sectorEntitiesApi, type SectorShip } from '@/api/sectorEntities';
+import { characterApi } from '@/api/characters';
 import { useCombatEvents } from '@/hooks/useCombatEvents';
 import { useTravelEvents } from '@/hooks/useTravelEvents';
 import { useSectorDeltas } from '@/hooks/useProcgenEvents';
@@ -46,7 +47,15 @@ export default function MapTab() {
     enabled: !!profileId,
   });
 
+  // Fetch character to get faction_id for chat
+  const { data: characters } = useQuery({
+    queryKey: ['characters', profileId],
+    queryFn: () => characterApi.getByProfile(profileId!),
+    enabled: !!profileId,
+  });
+
   const currentShip = ships?.[0] || null;
+  const currentCharacter = characters?.[0] || null;
   const currentSector = currentShip?.location_sector || '0.0.0';
 
   // Fetch stations in current sector (always visible - no scan required)
@@ -384,6 +393,7 @@ export default function MapTab() {
             <SafeAreaView style={{ flex: 1, backgroundColor: tokens.colors.surface.base }} edges={['top', 'bottom']}>
               <ChatPanel
                 playerId={profileId || ''}
+                factionId={currentCharacter?.faction_id}
                 currentSector={currentShip?.location_sector}
                 isVisible={chatPanelOpen}
                 onClose={() => setChatPanelOpen(false)}
