@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
 import { npcApi } from '@/api/npc';
 import { movementApi } from '@/api/movement';
+import { sectorEntitiesApi, type SectorShip } from '@/api/sectorEntities';
 import { useCombatEvents } from '@/hooks/useCombatEvents';
 import { useTravelEvents } from '@/hooks/useTravelEvents';
 import { useNPCStore } from '@/stores/npcStore';
@@ -56,6 +57,25 @@ export default function BridgeScreen() {
     enabled: !!currentShip && !isDocked,
   });
 
+  // Fetch all ships in sector (other players only, not NPCs)
+  // Pass profileId to update activity timestamp on each fetch
+  const { data: shipsData } = useQuery({
+    queryKey: ['sector-ships', currentSector, profileId],
+    queryFn: () => sectorEntitiesApi.getShips(currentSector, profileId || undefined),
+    enabled: !!currentShip && !isDocked && !!profileId,
+    staleTime: 3000, // Cache for 3 seconds
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
+  });
+
+  // Extract other player ships (filter out NPCs and current player's ship)
+  const otherShips: SectorShip[] = React.useMemo(() => {
+    const allShips = shipsData?.ships || [];
+    return allShips.filter(ship =>
+      !ship.is_npc && // Only player ships
+      ship.id !== currentShip?.id // Exclude current player's ship
+    );
+  }, [shipsData?.ships, currentShip?.id]);
+
   const { npcs, selectedNPC, setNPCs } = useNPCStore();
   const { isInCombat } = useCombatStore();
 
@@ -98,6 +118,10 @@ export default function BridgeScreen() {
         npcs={npcs}
         playerPosition={playerPosition}
         selectedNPCId={selectedNPC?.entity_id}
+        sectorId={currentSector}
+        otherShips={otherShips}
+        currentShipId={currentShip?.id}
+        dbStations={stationsData?.stations || []}
       />
 
       {/* Combat HUD Overlay - when in combat */}

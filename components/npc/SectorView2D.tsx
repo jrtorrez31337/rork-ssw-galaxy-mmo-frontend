@@ -293,13 +293,21 @@ export default function SectorView2D({
           );
         })}
 
-        {/* Other Ships in Sector (always visible - no scan required) */}
+        {/* Other Player Ships in Sector (always visible - no scan required) */}
         {otherShips
           .filter((ship) => ship.id !== currentShipId) // Exclude player's ship
-          .map((ship) => {
-            const pos = to2D([ship.position.x, ship.position.y, ship.position.z]);
-            // Use different colors for player ships vs NPC ships
-            const color = ship.is_npc ? '#f59e0b' : '#8b5cf6'; // Orange for NPC, Purple for players
+          .map((ship, index, filteredShips) => {
+            // Calculate position - spread ships in a circle if at same location
+            // This prevents stacking when all ships are at (0,0,0)
+            const basePos = to2D([ship.position.x, ship.position.y, ship.position.z]);
+            const spreadRadius = 60; // pixels to spread ships apart
+            const angle = (index / Math.max(filteredShips.length, 1)) * Math.PI * 2;
+            const offsetX = filteredShips.length > 1 ? Math.cos(angle) * spreadRadius : 0;
+            const offsetY = filteredShips.length > 1 ? Math.sin(angle) * spreadRadius : 0;
+            const pos = { x: basePos.x + offsetX, y: basePos.y + offsetY };
+
+            // Purple for player ships
+            const color = '#8b5cf6';
 
             return (
               <G key={ship.id}>
@@ -450,16 +458,10 @@ export default function SectorView2D({
             <Text style={styles.legendText}>Station</Text>
           </View>
         )}
-        {otherShips.some((s) => !s.is_npc) && (
+        {otherShips.length > 0 && (
           <View style={styles.legendItem}>
             <View style={[styles.legendDiamond, { backgroundColor: '#8b5cf6' }]} />
             <Text style={styles.legendText}>Player</Text>
-          </View>
-        )}
-        {otherShips.some((s) => s.is_npc) && (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDiamond, { backgroundColor: '#f59e0b' }]} />
-            <Text style={styles.legendText}>NPC Ship</Text>
           </View>
         )}
         <View style={styles.legendItem}>

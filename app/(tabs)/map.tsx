@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RefreshCw } from 'lucide-react-native';
@@ -57,18 +57,27 @@ export default function MapTab() {
     staleTime: 30000, // Cache for 30 seconds
   });
 
-  // Fetch ships in current sector (always visible - no scan required)
+  // Fetch ships in current sector (other players only, not NPCs)
+  // Pass profileId to update activity timestamp on each fetch
   const { data: shipsData } = useQuery({
-    queryKey: ['sector-ships', currentSector],
-    queryFn: () => sectorEntitiesApi.getShips(currentSector),
-    enabled: !!currentShip && !currentShip.docked_at,
-    staleTime: 10000, // Cache for 10 seconds (ships move more often)
-    refetchInterval: 15000, // Refresh every 15 seconds
+    queryKey: ['sector-ships', currentSector, profileId],
+    queryFn: () => sectorEntitiesApi.getShips(currentSector, profileId || undefined),
+    enabled: !!currentShip && !currentShip.docked_at && !!profileId,
+    staleTime: 3000, // Cache for 3 seconds
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
   });
 
   // Extract data from responses
-  const dbStations = stationsData?.data?.stations || [];
-  const otherShips: SectorShip[] = shipsData?.data?.ships || [];
+  const dbStations = stationsData?.stations || [];
+
+  // Filter to only show other player ships (not NPCs, not current player)
+  const otherShips: SectorShip[] = useMemo(() => {
+    const allShips = shipsData?.ships || [];
+    return allShips.filter(ship =>
+      !ship.is_npc && // Only player ships
+      ship.id !== currentShip?.id // Exclude current player's ship
+    );
+  }, [shipsData?.ships, currentShip?.id]);
 
   const { npcs, selectedNPC, setNPCs, setSelectedNPC, setLoading, setError } = useNPCStore();
   const { isInCombat, setCombatInstance } = useCombatStore();

@@ -21,48 +21,45 @@ export interface SectorShip {
 
 /**
  * Response from GET /sectors/{sector_id}/ships
+ * Note: apiClient unwraps the outer { success, data } wrapper
  */
 export interface ShipsInSectorResponse {
-  success: boolean;
-  data: {
-    sector: string;
-    ships: SectorShip[];
-    count: number;
-  };
+  sector: string;
+  ships: SectorShip[];
+  count: number;
 }
 
 /**
  * Response from GET /stations?sector=X.Y.Z
+ * Note: apiClient unwraps the outer { success, data } wrapper
  */
 export interface StationsInSectorResponse {
-  success: boolean;
-  data: {
-    sector: string;
-    stations: Station[];
-    count: number;
-  };
+  sector: string;
+  stations: Station[];
+  count: number;
 }
 
 /**
  * Response from GET /sectors/{sector_id}/all-entities
+ * Note: apiClient unwraps the outer { success, data } wrapper
  */
 export interface AllEntitiesResponse {
-  success: boolean;
-  data: {
-    sector: string;
-    stations: Station[];
-    station_count: number;
-    ships: SectorShip[];
-    ship_count: number;
-  };
+  sector: string;
+  stations: Station[];
+  station_count: number;
+  ships: SectorShip[];
+  ship_count: number;
 }
 
 /**
  * Get all ships in a sector
+ * @param sector - Sector coordinates (e.g. "0.0.0")
+ * @param viewerProfileId - Optional profile ID to update activity timestamp
  */
-export async function getShipsInSector(sector: string): Promise<ShipsInSectorResponse> {
+export async function getShipsInSector(sector: string, viewerProfileId?: string): Promise<ShipsInSectorResponse> {
+  const params = viewerProfileId ? `?viewer=${viewerProfileId}` : '';
   const response = await apiClient.get<ShipsInSectorResponse>(
-    `/sectors/${sector}/ships`
+    `/sectors/${sector}/ships${params}`
   );
   return response;
 }
