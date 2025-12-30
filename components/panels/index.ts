@@ -14,3 +14,5 @@ export { OperationsPanel } from './OperationsPanel';
 export { TacticalPanel } from './TacticalPanel';
 export { EngineeringPanel } from './EngineeringPanel';
 export { CommsPanel } from './CommsPanel';
+export { ShipSelectionPanel } from './ShipSelectionPanel';
+export { FlightPanel } from './FlightPanel';

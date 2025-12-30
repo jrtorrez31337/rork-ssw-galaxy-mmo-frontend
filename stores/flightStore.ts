@@ -65,17 +65,26 @@ const DEFAULT_ATTITUDE: AttitudeState = {
   yaw: { ...DEFAULT_AXIS },
 };
 
+// Extended state with active ship tracking
+interface ExtendedFlightState extends FlightState {
+  activeShipId: string | null;
+}
+
 // Initial flight state
-const INITIAL_STATE: FlightState = {
+const INITIAL_STATE: ExtendedFlightState = {
   profile: DEFAULT_PROFILE,
   throttle: DEFAULT_THROTTLE,
   attitude: DEFAULT_ATTITUDE,
   axisCouplingEnabled: false,
   controlsLocked: false,
   controlsLockReason: null,
+  activeShipId: null,
 };
 
 interface FlightStoreActions {
+  // Ship management
+  setActiveShipId: (shipId: string | null) => void;
+
   // Profile management
   setProfile: (profile: FlightHandlingProfile) => void;
   setProfileById: (profileId: string) => void;
@@ -102,15 +111,15 @@ interface FlightStoreActions {
   reset: () => void;
 }
 
-type FlightStore = FlightState & FlightStoreActions;
+type FlightStore = ExtendedFlightState & FlightStoreActions;
 
 // Profile registry - ships can register their profiles here
 const profileRegistry = new Map<string, FlightHandlingProfile>();
 profileRegistry.set('default', DEFAULT_PROFILE);
 
-// Register default ship profiles per ship types
-const SHIP_PROFILES: FlightHandlingProfile[] = [
-  {
+// Register default ship profiles per ship types - exported for UI access
+export const SHIP_PROFILES: Record<string, FlightHandlingProfile> = {
+  scout: {
     id: 'scout',
     name: 'Scout',
     maxSpeed: 150,
@@ -121,7 +130,7 @@ const SHIP_PROFILES: FlightHandlingProfile[] = [
     inputResponse: 0.25, // More responsive
     axisCouplingMode: 'none',
   },
-  {
+  fighter: {
     id: 'fighter',
     name: 'Fighter',
     maxSpeed: 120,
@@ -132,7 +141,7 @@ const SHIP_PROFILES: FlightHandlingProfile[] = [
     inputResponse: 0.3, // Very responsive
     axisCouplingMode: 'roll_to_yaw',
   },
-  {
+  trader: {
     id: 'trader',
     name: 'Trader',
     maxSpeed: 80,
@@ -143,7 +152,7 @@ const SHIP_PROFILES: FlightHandlingProfile[] = [
     inputResponse: 0.1, // Sluggish, heavy
     axisCouplingMode: 'none',
   },
-  {
+  explorer: {
     id: 'explorer',
     name: 'Explorer',
     maxSpeed: 100,
@@ -154,10 +163,10 @@ const SHIP_PROFILES: FlightHandlingProfile[] = [
     inputResponse: 0.2, // Balanced
     axisCouplingMode: 'none',
   },
-];
+};
 
 // Register all ship profiles
-SHIP_PROFILES.forEach((p) => profileRegistry.set(p.id, p));
+Object.values(SHIP_PROFILES).forEach((p) => profileRegistry.set(p.id, p));
 
 /**
  * Register a custom handling profile
@@ -184,6 +193,11 @@ export const useFlightStore = create<FlightStore>()(
   subscribeWithSelector((set, get) => ({
     // Initial state
     ...INITIAL_STATE,
+
+    // Set active ship ID
+    setActiveShipId: (shipId) => {
+      set({ activeShipId: shipId });
+    },
 
     // Set complete profile
     setProfile: (profile) => {

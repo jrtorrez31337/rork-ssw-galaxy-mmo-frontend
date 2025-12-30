@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, ReactNode } from 'react';
+import React, { useEffect, useRef, ReactNode, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
@@ -7,6 +7,7 @@ import { LeftRail } from './LeftRail';
 import { CommandBar } from './CommandBar';
 import { AlertOverlay } from './AlertOverlay';
 import { ContextualPanel, PanelRouter } from '@/components/panels';
+import { FlightViewport } from '@/components/viewport/FlightViewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 
 /**
@@ -54,12 +55,19 @@ let initialNavigationComplete = false;
 export function CockpitShell({ children }: CockpitShellProps) {
   const markShellMounted = useCockpitStore((s) => s.markShellMounted);
   const shellMounted = useCockpitStore((s) => s.shellMounted);
+  const activeViewport = useCockpitStore((s) => s.activeViewport);
+  const setActiveViewport = useCockpitStore((s) => s.setActiveViewport);
   const mountId = useRef<number | null>(null);
 
   // Flight system integration (per Cinematic Flight Doctrine)
   // Runs flight simulation tick and integrates with game state
   useFlightTick(shellMounted);
   useFlightIntegration({ autoLockControls: true });
+
+  // Handler to exit flight mode and return to sector view
+  const handleExitFlight = useCallback(() => {
+    setActiveViewport('sector');
+  }, [setActiveViewport]);
 
   useEffect(() => {
     // Track mount count for debugging
@@ -110,15 +118,21 @@ export function CockpitShell({ children }: CockpitShellProps) {
 
         {/* Primary Viewport - Children render here */}
         <View style={styles.viewport}>
-          {/* Main content area - sector view, maps, etc. */}
+          {/* Main content area - sector view, maps, flight mode, etc. */}
           <View style={styles.contentArea}>
-            {children}
+            {activeViewport === 'flight' ? (
+              <FlightViewport onExitFlight={handleExitFlight} />
+            ) : (
+              children
+            )}
           </View>
 
-          {/* Contextual Panel - slides up from bottom */}
-          <ContextualPanel>
-            <PanelRouter />
-          </ContextualPanel>
+          {/* Contextual Panel - slides up from bottom (hidden in flight mode) */}
+          {activeViewport !== 'flight' && (
+            <ContextualPanel>
+              <PanelRouter />
+            </ContextualPanel>
+          )}
 
           {/* Alert overlay sits above viewport content */}
           <AlertOverlay />

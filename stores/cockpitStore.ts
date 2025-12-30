@@ -10,7 +10,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 export type RailSystem = 'NAV' | 'OPS' | 'TAC' | 'ENG' | 'COM' | 'FLT';
 export type PanelState = 'hidden' | 'peek' | 'expanded';
 export type AlertLevel = 'green' | 'yellow' | 'red';
-export type ViewportType = 'sector' | 'station' | 'system-map' | 'galaxy-map' | 'hyperspace';
+export type ViewportType = 'sector' | 'station' | 'system-map' | 'galaxy-map' | 'hyperspace' | 'flight';
 
 interface RailStateData {
   NAV: {
