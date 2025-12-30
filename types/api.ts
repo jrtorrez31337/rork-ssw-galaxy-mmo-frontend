@@ -76,6 +76,11 @@ export interface Ship {
   // Async travel fields
   travel_status?: TravelStatus;
   current_travel_id?: string;
+  // Scanning fields
+  sensor_range?: number;
+  signature?: number;
+  last_scan_at?: string;
+  faction_id?: string;
 }
 
 export interface ApiError {

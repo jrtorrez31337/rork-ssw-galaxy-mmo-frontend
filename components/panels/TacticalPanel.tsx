@@ -6,6 +6,10 @@ import { Panel, Gauge, StatusChip, RailButton, SegmentedGauge } from '@/ui/compo
 import { useBridgeState } from '@/hooks/useBridgeState';
 import { useTargetStore } from '@/stores/targetStore';
 import { useCombatReadinessStore } from '@/stores/combatReadinessStore';
+import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { shipApi } from '@/api/ships';
+import { ScannerDisplay } from '@/components/hud/ScannerDisplay';
 
 /**
  * TacticalPanel - TAC Rail Content
@@ -24,6 +28,15 @@ import { useCombatReadinessStore } from '@/stores/combatReadinessStore';
 
 export function TacticalPanel() {
   const { glance, target: targetState, situation } = useBridgeState();
+  const { profileId } = useAuth();
+
+  // Fetch current ship for scanner
+  const { data: ships } = useQuery({
+    queryKey: ['ships', profileId],
+    queryFn: () => shipApi.getByOwner(profileId!),
+    enabled: !!profileId,
+  });
+  const currentShip = ships?.[0] || null;
 
   const target = useTargetStore((s) => s.target);
   const contacts = useTargetStore((s) => s.contacts);
@@ -212,21 +225,13 @@ export function TacticalPanel() {
         </Panel>
       )}
 
-      {/* Contacts */}
-      <Panel variant="combat" title="CONTACTS" style={styles.panel}>
-        <View style={styles.contactsSummary}>
-          <StatusChip
-            label="HOSTILE"
-            value={hostileCount.toString()}
-            status={hostileCount > 0 ? 'danger' : 'neutral'}
-          />
-          <StatusChip
-            label="TOTAL"
-            value={contacts.length.toString()}
-            status="info"
-          />
-        </View>
-      </Panel>
+      {/* Scanner - Contacts Detection */}
+      {currentShip && (
+        <ScannerDisplay
+          shipId={currentShip.id}
+          sensorRange={currentShip.sensor_range || 8000}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -376,9 +381,5 @@ const styles = StyleSheet.create({
   escapeLabel: {
     fontSize: tokens.typography.fontSize.xs,
     color: tokens.colors.text.tertiary,
-  },
-  contactsSummary: {
-    flexDirection: 'row',
-    gap: tokens.spacing[3],
   },
 });
