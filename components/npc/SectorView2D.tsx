@@ -1,6 +1,15 @@
-import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
-import { useEffect } from 'react';
+import { View, Text, StyleSheet, LayoutChangeEvent, Dimensions } from 'react-native';
+import { useEffect, useState, useCallback } from 'react';
 import Svg, { Circle, Polygon, Text as SvgText, G, Line, Rect } from 'react-native-svg';
+import {
+  GestureDetector,
+  Gesture,
+} from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
 import Colors from '@/constants/colors';
 import type { NPCEntity } from '@/types/combat';
 import { getNPCColor } from '@/types/combat';
@@ -49,8 +58,73 @@ export default function SectorView2D({
   otherShips = [],
   currentShipId,
 }: SectorView2DProps) {
-  // Use hook for dynamic window dimensions (fixes iOS Expo Go rendering issue)
-  const { width: screenWidth } = useWindowDimensions();
+  // Get initial screen width, then update from layout
+  const screenWidth = Dimensions.get('window').width;
+  const [containerWidth, setContainerWidth] = useState(screenWidth - 32);
+
+  // Handle container layout to get actual width
+  const onContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    if (width > 0 && width !== containerWidth) {
+      setContainerWidth(width);
+    }
+  }, [containerWidth]);
+
+  // Gesture state for pinch-to-zoom and pan
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  // Pinch gesture for zooming
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((event) => {
+      scale.value = Math.min(Math.max(savedScale.value * event.scale, 0.5), 4);
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+    });
+
+  // Pan gesture for moving around
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      translateX.value = savedTranslateX.value + event.translationX;
+      translateY.value = savedTranslateY.value + event.translationY;
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  // Double tap to reset zoom
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      scale.value = withSpring(1);
+      savedScale.value = 1;
+      translateX.value = withSpring(0);
+      translateY.value = withSpring(0);
+      savedTranslateX.value = 0;
+      savedTranslateY.value = 0;
+    });
+
+  // Combine gestures - pinch and pan can work simultaneously
+  const composedGesture = Gesture.Simultaneous(
+    pinchGesture,
+    panGesture,
+    doubleTapGesture
+  );
+
+  // Animated style for zoom/pan transforms
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
 
   // Get procgen store for sector content
   const { getSector, enterSector } = useProcgenStore();
@@ -74,10 +148,11 @@ export default function SectorView2D({
   // Get current sector data
   const sector = sectorId ? getSector(sectorId) : null;
 
-  // Calculate view size based on current screen width
-  // Fallback to 300 if width is not yet available
-  const VIEW_SIZE = screenWidth > 32 ? screenWidth - 32 : 300;
+  // Calculate view size based on container width (with padding)
+  // Use 300 as minimum/fallback until layout is measured
+  const VIEW_SIZE = containerWidth > 32 ? containerWidth - 32 : 300;
   const SCALE = VIEW_SIZE / 10000; // 10000 units = full view
+
 
   // Convert 3D position to 2D screen coordinates (using x, y, ignoring z for now)
   const to2D = (pos: [number, number, number]): { x: number; y: number } => {
@@ -92,31 +167,44 @@ export default function SectorView2D({
     return `${x},${y - size} ${x - size/2},${y + size/2} ${x + size/2},${y + size/2}`;
   };
 
-  // Ensure we have valid dimensions for iOS
+  // Ensure we have valid dimensions
   if (VIEW_SIZE <= 0 || !Number.isFinite(VIEW_SIZE)) {
     return (
-      <View style={[styles.container, { height: 300, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: Colors.textSecondary }}>Loading sector view...</Text>
+      <View style={styles.container} onLayout={onContainerLayout}>
+        <View style={[styles.loadingContainer, { height: 300 }]}>
+          <Text style={styles.loadingText}>Loading sector view...</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={onContainerLayout}>
       {/* Sector Map with Territory Overlay */}
-      <View style={styles.mapContainer}>
-        {/* Grid background */}
-        <Svg
-        width={VIEW_SIZE}
-        height={VIEW_SIZE}
-        viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
-        style={styles.svg}
-      >
+      <View style={[styles.mapContainer, { width: VIEW_SIZE, height: VIEW_SIZE, overflow: 'hidden' }]}>
+        <GestureDetector gesture={composedGesture}>
+          <Animated.View style={[{ width: VIEW_SIZE, height: VIEW_SIZE }, animatedStyle]}>
+            <View style={[styles.svgContainer, { width: VIEW_SIZE, height: VIEW_SIZE }]}>
+              {/* Grid background */}
+              <Svg
+                width={VIEW_SIZE}
+                height={VIEW_SIZE}
+                viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
+              >
+        {/* Background rect */}
+        <Rect
+          x={0}
+          y={0}
+          width={VIEW_SIZE}
+          height={VIEW_SIZE}
+          fill={Colors.background}
+        />
+
         {/* Territory Border - faction control indicator */}
         <TerritoryBorder viewSize={VIEW_SIZE} controlData={controlData} />
 
         {/* Grid lines */}
-        <G opacity={0.1}>
+        <G opacity={0.3}>
           {[...Array(11)].map((_, i) => {
             const pos = (i / 10) * VIEW_SIZE;
             return (
@@ -145,22 +233,32 @@ export default function SectorView2D({
         {/* Center crosshair */}
         <G>
           <Line
-            x1={VIEW_SIZE / 2 - 20}
+            x1={VIEW_SIZE / 2 - 30}
             y1={VIEW_SIZE / 2}
-            x2={VIEW_SIZE / 2 + 20}
+            x2={VIEW_SIZE / 2 + 30}
             y2={VIEW_SIZE / 2}
             stroke={Colors.primary}
-            strokeWidth={2}
-            opacity={0.5}
+            strokeWidth={3}
+            opacity={0.8}
           />
           <Line
             x1={VIEW_SIZE / 2}
-            y1={VIEW_SIZE / 2 - 20}
+            y1={VIEW_SIZE / 2 - 30}
             x2={VIEW_SIZE / 2}
-            y2={VIEW_SIZE / 2 + 20}
+            y2={VIEW_SIZE / 2 + 30}
+            stroke={Colors.primary}
+            strokeWidth={3}
+            opacity={0.8}
+          />
+          {/* Center circle */}
+          <Circle
+            cx={VIEW_SIZE / 2}
+            cy={VIEW_SIZE / 2}
+            r={8}
+            fill="none"
             stroke={Colors.primary}
             strokeWidth={2}
-            opacity={0.5}
+            opacity={0.8}
           />
         </G>
 
@@ -435,16 +533,19 @@ export default function SectorView2D({
               </SvgText>
             </G>
           );
-        })}
-      </Svg>
+              })}
+              </Svg>
+            </View>
+          </Animated.View>
+        </GestureDetector>
 
-        {/* Threat Indicator Overlay */}
-        <ThreatIndicator
-          controlData={controlData}
-          position="top-right"
-          compact={false}
-        />
-      </View>
+          {/* Threat Indicator Overlay */}
+          <ThreatIndicator
+            controlData={controlData}
+            position="top-right"
+            compact={false}
+          />
+        </View>
 
       {/* Legend */}
       <View style={styles.legend}>
@@ -515,7 +616,7 @@ export default function SectorView2D({
       {/* Info */}
       <View style={styles.info}>
         <Text style={styles.infoText}>
-          Tap NPC in list below to select • View shows 10km range
+          Pinch to zoom • Double-tap to reset • Tap NPC to select
         </Text>
       </View>
     </View>
@@ -526,15 +627,30 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     gap: 12,
+    width: '100%',
   },
-  mapContainer: {
-    position: 'relative',
-  },
-  svg: {
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
     backgroundColor: Colors.background,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: Colors.border,
+  },
+  loadingText: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+  },
+  mapContainer: {
+    position: 'relative',
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: Colors.border,
+  },
+  svgContainer: {
+    backgroundColor: Colors.background,
   },
   legend: {
     flexDirection: 'row',
