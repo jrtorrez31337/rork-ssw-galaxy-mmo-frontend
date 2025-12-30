@@ -6,6 +6,7 @@ import { Panel, Gauge, StatusChip, RailButton } from '@/ui/components';
 import { useBridgeState } from '@/hooks/useBridgeState';
 import { useTravelStateStore } from '@/stores/travelStateStore';
 import { useLocationStore } from '@/stores/locationStore';
+import { useCommandStore } from '@/stores/commandStore';
 import { ShipSelectionPanel } from './ShipSelectionPanel';
 
 /**
@@ -31,6 +32,8 @@ export function NavigationPanel() {
 
   const isDocked = useLocationStore((s) => s.docked.isDocked);
   const dockedStation = useLocationStore((s) => s.docked.stationName);
+
+  const dispatchAction = useCommandStore((s) => s.dispatchAction);
 
   // Format time remaining
   const formatTime = (seconds: number): string => {
@@ -142,7 +145,7 @@ export function NavigationPanel() {
             label="UNDOCK"
             variant="navigation"
             onPress={() => {
-              console.log('[NAV] Undock requested');
+              dispatchAction('nav:undock');
             }}
           />
         </Panel>

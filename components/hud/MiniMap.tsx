@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { MapPin } from 'lucide-react-native';
+import { MapPin, AlertTriangle } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
+import { useSectorControl } from '@/hooks/useSectorControl';
 import type { Ship } from '@/types/api';
 import type { Station } from '@/types/movement';
 
@@ -23,12 +24,17 @@ interface MiniMapProps {
  * - Tap to expand (optional enhancement)
  */
 export function MiniMap({ ship, stations = [], npcCount = 0, onTap }: MiniMapProps) {
+  // Get sector control data for current sector
+  const { controlData } = useSectorControl(ship?.location_sector);
+
   if (!ship) {
     return null;
   }
 
   // Parse current sector coordinates with defensive fallback
-  const locationParts = (ship.location_sector || '0,0,0').split(',');
+  // Handle both comma-separated (0,0,0) and dot-separated (0.0.0) formats
+  const separator = ship.location_sector?.includes('.') ? '.' : ',';
+  const locationParts = (ship.location_sector || '0,0,0').split(separator);
   const x = parseInt(locationParts[0], 10) || 0;
   const y = parseInt(locationParts[1], 10) || 0;
   const z = parseInt(locationParts[2], 10) || 0;
@@ -41,9 +47,26 @@ export function MiniMap({ ship, stations = [], npcCount = 0, onTap }: MiniMapPro
         x: x + dx,
         y: y + dy,
         isCurrent: dx === 0 && dy === 0,
+        // Generate sector ID for potential future per-sector control lookup
+        sectorId: `${x + dx}.${y + dy}.${z}`,
       });
     }
   }
+
+  // Get sector control color
+  const getControlColor = () => {
+    if (!controlData?.controllingFaction) {
+      return tokens.colors.primary.alpha[20];
+    }
+    return controlData.controllingFaction.color + '40'; // 25% opacity
+  };
+
+  const getControlBorderColor = () => {
+    if (!controlData?.controllingFaction) {
+      return tokens.colors.primary.main;
+    }
+    return controlData.controllingFaction.color;
+  };
 
   return (
     <TouchableOpacity
@@ -56,6 +79,13 @@ export function MiniMap({ ship, stations = [], npcCount = 0, onTap }: MiniMapPro
       <View style={styles.header}>
         <MapPin size={12} color={tokens.colors.primary.main} />
         <Text style={styles.title}>RADAR</Text>
+        {/* Threat indicator */}
+        {(controlData?.isContested || controlData?.isWarZone) && (
+          <AlertTriangle
+            size={10}
+            color={controlData.isWarZone ? tokens.colors.alert.red : tokens.colors.alert.yellow}
+          />
+        )}
       </View>
 
       {/* Grid */}
@@ -73,7 +103,13 @@ export function MiniMap({ ship, stations = [], npcCount = 0, onTap }: MiniMapPro
                   top: row * 28,
                   left: col * 28,
                 },
-                sector.isCurrent && styles.currentSector,
+                sector.isCurrent && [
+                  styles.currentSector,
+                  {
+                    backgroundColor: getControlColor(),
+                    borderColor: getControlBorderColor(),
+                  },
+                ],
               ]}
             >
               {/* Show current position indicator */}
@@ -109,6 +145,20 @@ export function MiniMap({ ship, stations = [], npcCount = 0, onTap }: MiniMapPro
       {/* Footer - Current Sector */}
       <View style={styles.footer}>
         <Text style={styles.coordinates}>{ship.location_sector}</Text>
+        {/* Faction control indicator */}
+        {controlData?.controllingFaction && (
+          <Text
+            style={[
+              styles.factionLabel,
+              { color: controlData.controllingFaction.color },
+            ]}
+            numberOfLines={1}
+          >
+            {controlData.isContested
+              ? 'CONTESTED'
+              : controlData.controllingFaction.name.split(' ')[0].toUpperCase()}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -221,5 +271,13 @@ const styles = StyleSheet.create({
     fontWeight: tokens.typography.fontWeight.semibold,
     color: tokens.colors.text.secondary,
     fontFamily: tokens.typography.fontFamily.mono,
+  },
+
+  factionLabel: {
+    fontSize: 7,
+    fontWeight: tokens.typography.fontWeight.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 2,
   },
 });

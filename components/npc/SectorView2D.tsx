@@ -5,6 +5,7 @@ import Colors from '@/constants/colors';
 import type { NPCEntity } from '@/types/combat';
 import { getNPCColor } from '@/types/combat';
 import { useProcgenStore } from '@/stores/procgenStore';
+import { useSectorControl } from '@/hooks/useSectorControl';
 import {
   StarMarker,
   StationMarker,
@@ -13,6 +14,8 @@ import {
   AnomalyMarker,
   PlanetMarker,
 } from '@/components/sector/ProcgenMarkers';
+import { TerritoryBorder } from '@/components/hud/TerritoryBorder';
+import { ThreatIndicator } from '@/components/hud/ThreatIndicator';
 import type { Station } from '@/types/movement';
 import type { SectorShip } from '@/api/sectorEntities';
 
@@ -51,6 +54,9 @@ export default function SectorView2D({
 
   // Get procgen store for sector content
   const { getSector, enterSector } = useProcgenStore();
+
+  // Get sector control data for territory visualization
+  const { controlData } = useSectorControl(sectorId);
 
   // Load sector data when sectorId changes
   useEffect(() => {
@@ -97,13 +103,18 @@ export default function SectorView2D({
 
   return (
     <View style={styles.container}>
-      {/* Grid background */}
-      <Svg
+      {/* Sector Map with Territory Overlay */}
+      <View style={styles.mapContainer}>
+        {/* Grid background */}
+        <Svg
         width={VIEW_SIZE}
         height={VIEW_SIZE}
         viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
         style={styles.svg}
       >
+        {/* Territory Border - faction control indicator */}
+        <TerritoryBorder viewSize={VIEW_SIZE} controlData={controlData} />
+
         {/* Grid lines */}
         <G opacity={0.1}>
           {[...Array(11)].map((_, i) => {
@@ -419,6 +430,14 @@ export default function SectorView2D({
         })}
       </Svg>
 
+        {/* Threat Indicator Overlay */}
+        <ThreatIndicator
+          controlData={controlData}
+          position="top-right"
+          compact={false}
+        />
+      </View>
+
       {/* Legend */}
       <View style={styles.legend}>
         <View style={styles.legendItem}>
@@ -471,6 +490,24 @@ export default function SectorView2D({
             )}
           </>
         )}
+        {/* Territory Control Legend */}
+        {controlData?.controllingFaction && (
+          <View style={styles.legendItem}>
+            <View
+              style={[
+                styles.legendDot,
+                {
+                  backgroundColor: controlData.controllingFaction.color,
+                  borderWidth: controlData.isContested ? 1 : 0,
+                  borderColor: controlData.contestingFaction?.color || 'transparent',
+                },
+              ]}
+            />
+            <Text style={styles.legendText}>
+              {controlData.isContested ? 'Contested' : controlData.controllingFaction.name.split(' ')[0]}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Info */}
@@ -487,6 +524,9 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     gap: 12,
+  },
+  mapContainer: {
+    position: 'relative',
   },
   svg: {
     backgroundColor: Colors.background,

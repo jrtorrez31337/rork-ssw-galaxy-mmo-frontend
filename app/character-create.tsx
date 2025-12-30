@@ -9,15 +9,19 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
-import { User, ChevronLeft, Check } from 'lucide-react-native';
+import { User, ChevronLeft, ChevronRight, Check } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
 import { CharacterAttributes } from '@/types/api';
+import { FactionId, FACTION_METADATA, FACTION_UUIDS } from '@/types/factions';
+import FactionSelectionStep from '@/components/character-create/FactionSelectionStep';
 import Colors from '@/constants/colors';
 
 const TOTAL_POINTS = 20;
 const MIN_STAT = 1;
 const MAX_STAT = 10;
+
+type Step = 'name' | 'faction' | 'attributes';
 
 const ATTRIBUTES = [
   {
@@ -50,7 +54,13 @@ const ATTRIBUTES = [
 export default function CharacterCreateScreen() {
   const router = useRouter();
   const { profileId } = useAuth();
+
+  // Step management
+  const [step, setStep] = useState<Step>('name');
+
+  // Form state
   const [name, setName] = useState('');
+  const [selectedFaction, setSelectedFaction] = useState<FactionId | null>(null);
   const [attributes, setAttributes] = useState<CharacterAttributes>({
     piloting: 4,
     engineering: 4,
@@ -77,12 +87,25 @@ export default function CharacterCreateScreen() {
     }
   };
 
+  // Get the home sector from selected faction
+  const getHomeSector = () => {
+    if (!selectedFaction || selectedFaction === 'neutral') return '0.0.0';
+    return FACTION_METADATA[selectedFaction].capitalSector;
+  };
+
+  // Get faction UUID
+  const getFactionUUID = () => {
+    if (!selectedFaction || selectedFaction === 'neutral') return undefined;
+    return FACTION_UUIDS[selectedFaction];
+  };
+
   const createMutation = useMutation({
     mutationFn: () =>
       characterApi.create({
         profile_id: profileId!,
         name,
-        home_sector: 'sol',
+        faction_id: getFactionUUID()!,
+        home_sector: getHomeSector(),
         attributes,
       }),
     onSuccess: () => {
@@ -90,7 +113,235 @@ export default function CharacterCreateScreen() {
     },
   });
 
-  const canSubmit = name.length >= 3 && remaining === 0;
+  // Validation for each step
+  const canProceedFromName = name.length >= 3 && name.length <= 32;
+  const canProceedFromFaction = selectedFaction !== null;
+  const canSubmit = canProceedFromName && canProceedFromFaction && remaining === 0;
+
+  // Step navigation
+  const goToNextStep = () => {
+    if (step === 'name' && canProceedFromName) {
+      setStep('faction');
+    } else if (step === 'faction' && canProceedFromFaction) {
+      setStep('attributes');
+    }
+  };
+
+  const goToPreviousStep = () => {
+    if (step === 'faction') {
+      setStep('name');
+    } else if (step === 'attributes') {
+      setStep('faction');
+    }
+  };
+
+  // Step titles
+  const getStepTitle = () => {
+    switch (step) {
+      case 'name':
+        return 'Create Character';
+      case 'faction':
+        return 'Choose Faction';
+      case 'attributes':
+        return 'Allocate Attributes';
+    }
+  };
+
+  // Step indicator
+  const renderStepIndicator = () => (
+    <View style={styles.stepIndicator}>
+      <View style={[styles.stepDot, step === 'name' && styles.stepDotActive]} />
+      <View style={styles.stepLine} />
+      <View style={[styles.stepDot, step === 'faction' && styles.stepDotActive]} />
+      <View style={styles.stepLine} />
+      <View style={[styles.stepDot, step === 'attributes' && styles.stepDotActive]} />
+    </View>
+  );
+
+  // Render step content
+  const renderStepContent = () => {
+    switch (step) {
+      case 'name':
+        return (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Character Name</Text>
+            <TextInput
+              style={styles.nameInput}
+              placeholder="Enter character name"
+              placeholderTextColor={Colors.textDim}
+              value={name}
+              onChangeText={setName}
+              maxLength={32}
+              autoFocus
+            />
+            <Text style={styles.helperText}>3-32 characters</Text>
+          </View>
+        );
+
+      case 'faction':
+        return (
+          <View style={styles.factionSection}>
+            <FactionSelectionStep
+              selectedFaction={selectedFaction}
+              onSelect={setSelectedFaction}
+            />
+          </View>
+        );
+
+      case 'attributes':
+        return (
+          <View style={styles.section}>
+            <View style={styles.pointsHeader}>
+              <Text style={styles.sectionTitle}>Attribute Points</Text>
+              <View style={styles.pointsBadge}>
+                <Text style={styles.pointsText}>
+                  {remaining} / {TOTAL_POINTS}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.helperText}>
+              Allocate {TOTAL_POINTS} points across your attributes
+            </Text>
+
+            <View style={styles.attributeList}>
+              {ATTRIBUTES.map((attr) => {
+                const value = attributes[attr.key];
+                const percentage = (value / MAX_STAT) * 100;
+
+                return (
+                  <View key={attr.key} style={styles.attributeCard}>
+                    <View style={styles.attributeHeader}>
+                      <View style={styles.attributeInfo}>
+                        <Text style={styles.attributeLabel}>{attr.label}</Text>
+                        <Text style={styles.attributeDescription}>
+                          {attr.description}
+                        </Text>
+                      </View>
+                      <View style={styles.attributeValue}>
+                        <Text style={styles.valueText}>{value}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.attributeControls}>
+                      <View style={styles.progressBar}>
+                        <View
+                          style={[
+                            styles.progressFill,
+                            { width: `${percentage}%` },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.buttons}>
+                        <TouchableOpacity
+                          style={[
+                            styles.controlButton,
+                            value <= MIN_STAT && styles.controlButtonDisabled,
+                          ]}
+                          onPress={() => decrement(attr.key)}
+                          disabled={value <= MIN_STAT}
+                        >
+                          <Text
+                            style={[
+                              styles.controlButtonText,
+                              value <= MIN_STAT &&
+                                styles.controlButtonTextDisabled,
+                            ]}
+                          >
+                            -
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.controlButton,
+                            (value >= MAX_STAT || remaining <= 0) &&
+                              styles.controlButtonDisabled,
+                          ]}
+                          onPress={() => increment(attr.key)}
+                          disabled={value >= MAX_STAT || remaining <= 0}
+                        >
+                          <Text
+                            style={[
+                              styles.controlButtonText,
+                              (value >= MAX_STAT || remaining <= 0) &&
+                                styles.controlButtonTextDisabled,
+                            ]}
+                          >
+                            +
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        );
+    }
+  };
+
+  // Render navigation buttons
+  const renderNavigation = () => {
+    const showBack = step !== 'name';
+    const showNext = step !== 'attributes';
+    const showCreate = step === 'attributes';
+
+    return (
+      <View style={styles.navigationContainer}>
+        {showBack && (
+          <TouchableOpacity
+            style={styles.backNavButton}
+            onPress={goToPreviousStep}
+          >
+            <ChevronLeft size={20} color={Colors.text} />
+            <Text style={styles.backNavText}>Back</Text>
+          </TouchableOpacity>
+        )}
+
+        {!showBack && <View style={styles.navSpacer} />}
+
+        {showNext && (
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              ((step === 'name' && !canProceedFromName) ||
+                (step === 'faction' && !canProceedFromFaction)) &&
+                styles.nextButtonDisabled,
+            ]}
+            onPress={goToNextStep}
+            disabled={
+              (step === 'name' && !canProceedFromName) ||
+              (step === 'faction' && !canProceedFromFaction)
+            }
+          >
+            <Text style={styles.nextButtonText}>Next</Text>
+            <ChevronRight size={20} color={Colors.background} />
+          </TouchableOpacity>
+        )}
+
+        {showCreate && (
+          <TouchableOpacity
+            style={[
+              styles.createButton,
+              (!canSubmit || createMutation.isPending) &&
+                styles.createButtonDisabled,
+            ]}
+            onPress={() => createMutation.mutate()}
+            disabled={!canSubmit || createMutation.isPending}
+          >
+            {createMutation.isPending ? (
+              <Text style={styles.createButtonText}>Creating...</Text>
+            ) : (
+              <>
+                <Check size={20} color={Colors.background} />
+                <Text style={styles.createButtonText}>Create Character</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -103,139 +354,26 @@ export default function CharacterCreateScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <User size={24} color={Colors.primary} />
-          <Text style={styles.headerTitle}>Create Character</Text>
+          <Text style={styles.headerTitle}>{getStepTitle()}</Text>
         </View>
         <View style={styles.backButton} />
       </View>
 
+      {renderStepIndicator()}
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Character Name</Text>
-          <TextInput
-            style={styles.nameInput}
-            placeholder="Enter character name"
-            placeholderTextColor={Colors.textDim}
-            value={name}
-            onChangeText={setName}
-            maxLength={32}
-          />
-          <Text style={styles.helperText}>3-32 characters</Text>
-        </View>
+        {renderStepContent()}
 
-        <View style={styles.section}>
-          <View style={styles.pointsHeader}>
-            <Text style={styles.sectionTitle}>Attribute Points</Text>
-            <View style={styles.pointsBadge}>
-              <Text style={styles.pointsText}>
-                {remaining} / {TOTAL_POINTS}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.helperText}>
-            Allocate {TOTAL_POINTS} points across your attributes
-          </Text>
-
-          <View style={styles.attributeList}>
-            {ATTRIBUTES.map((attr) => {
-              const value = attributes[attr.key];
-              const percentage = (value / MAX_STAT) * 100;
-
-              return (
-                <View key={attr.key} style={styles.attributeCard}>
-                  <View style={styles.attributeHeader}>
-                    <View style={styles.attributeInfo}>
-                      <Text style={styles.attributeLabel}>{attr.label}</Text>
-                      <Text style={styles.attributeDescription}>
-                        {attr.description}
-                      </Text>
-                    </View>
-                    <View style={styles.attributeValue}>
-                      <Text style={styles.valueText}>{value}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.attributeControls}>
-                    <View style={styles.progressBar}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          { width: `${percentage}%` },
-                        ]}
-                      />
-                    </View>
-                    <View style={styles.buttons}>
-                      <TouchableOpacity
-                        style={[
-                          styles.controlButton,
-                          value <= MIN_STAT && styles.controlButtonDisabled,
-                        ]}
-                        onPress={() => decrement(attr.key)}
-                        disabled={value <= MIN_STAT}
-                      >
-                        <Text
-                          style={[
-                            styles.controlButtonText,
-                            value <= MIN_STAT &&
-                              styles.controlButtonTextDisabled,
-                          ]}
-                        >
-                          −
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.controlButton,
-                          (value >= MAX_STAT || remaining <= 0) &&
-                            styles.controlButtonDisabled,
-                        ]}
-                        onPress={() => increment(attr.key)}
-                        disabled={value >= MAX_STAT || remaining <= 0}
-                      >
-                        <Text
-                          style={[
-                            styles.controlButtonText,
-                            (value >= MAX_STAT || remaining <= 0) &&
-                              styles.controlButtonTextDisabled,
-                          ]}
-                        >
-                          +
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {createMutation.isError && (
+        {createMutation.isError && step === 'attributes' && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>
               {createMutation.error?.message || 'Failed to create character'}
             </Text>
           </View>
         )}
-
-        <TouchableOpacity
-          style={[
-            styles.createButton,
-            (!canSubmit || createMutation.isPending) &&
-              styles.createButtonDisabled,
-          ]}
-          onPress={() => createMutation.mutate()}
-          disabled={!canSubmit || createMutation.isPending}
-        >
-          {createMutation.isPending ? (
-            <Text style={styles.createButtonText}>Creating...</Text>
-          ) : (
-            <>
-              <Check size={20} color={Colors.background} />
-              <Text style={styles.createButtonText}>Create Character</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </ScrollView>
+
+      {renderNavigation()}
     </View>
   );
 }
@@ -272,10 +410,41 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: Colors.text,
   },
+  stepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  stepDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 2,
+    borderColor: Colors.border,
+  },
+  stepDotActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  stepLine: {
+    width: 40,
+    height: 2,
+    backgroundColor: Colors.border,
+    marginHorizontal: 8,
+  },
   content: {
     flex: 1,
   },
   section: {
+    padding: 24,
+  },
+  factionSection: {
+    flex: 1,
     padding: 24,
   },
   sectionTitle: {
@@ -413,16 +582,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
+  navigationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  navSpacer: {
+    flex: 1,
+  },
+  backNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  backNavText: {
+    fontSize: 16,
+    color: Colors.text,
+  },
+  nextButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  nextButtonDisabled: {
+    opacity: 0.5,
+  },
+  nextButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.background,
+  },
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     backgroundColor: Colors.primary,
-    marginHorizontal: 24,
-    marginBottom: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 12,
-    height: 56,
   },
   createButtonDisabled: {
     opacity: 0.5,

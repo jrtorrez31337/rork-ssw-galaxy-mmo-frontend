@@ -9,6 +9,7 @@ import { AlertOverlay } from './AlertOverlay';
 import { ContextualPanel, PanelRouter } from '@/components/panels';
 import { FlightViewport } from '@/components/viewport/FlightViewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
+import { useCommandHandler } from '@/hooks/useCommandHandler';
 
 /**
  * CockpitShell - Persistent Bridge Frame
@@ -63,6 +64,9 @@ export function CockpitShell({ children }: CockpitShellProps) {
   // Runs flight simulation tick and integrates with game state
   useFlightTick(shellMounted);
   useFlightIntegration({ autoLockControls: true });
+
+  // Command action handler - processes actions from CommandBar
+  useCommandHandler();
 
   // Handler to exit flight mode and return to sector view
   const handleExitFlight = useCallback(() => {

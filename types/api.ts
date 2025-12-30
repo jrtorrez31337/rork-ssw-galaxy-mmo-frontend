@@ -30,6 +30,7 @@ export interface Character {
   profile_id: string;
   name: string;
   home_sector: string;
+  faction_id?: string;
   attributes: CharacterAttributes;
   created_at: string;
 }

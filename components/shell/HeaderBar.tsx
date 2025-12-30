@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
 import { useShipStatus } from '@/hooks/useShipStatus';
+import { useSectorControl } from '@/hooks/useSectorControl';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
@@ -108,6 +109,79 @@ function VitalBar({ label, current, max, color, critical }: VitalBarProps) {
   );
 }
 
+/**
+ * FactionControlBadge - Shows sector control status
+ * Displays controlling faction color and contested/threat indicators
+ */
+interface FactionControlBadgeProps {
+  sectorId: string | undefined;
+  playerFactionId?: string;
+}
+
+function FactionControlBadge({ sectorId, playerFactionId }: FactionControlBadgeProps) {
+  const { controlData, isLoading } = useSectorControl(sectorId, playerFactionId);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Pulse animation for contested zones
+  useEffect(() => {
+    if (controlData?.isContested) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.6,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [controlData?.isContested, pulseAnim]);
+
+  if (!sectorId || isLoading || !controlData) {
+    return null;
+  }
+
+  const { status, controllingFaction, isContested, threatLevel } = controlData;
+
+  // Don't show badge for neutral sectors with no significant faction presence
+  if (status === 'neutral' && !controllingFaction) {
+    return (
+      <View style={styles.controlBadge}>
+        <View style={[styles.controlDot, { backgroundColor: tokens.colors.text.tertiary }]} />
+        <Text style={styles.controlText}>NEUTRAL</Text>
+      </View>
+    );
+  }
+
+  const badgeColor = controllingFaction?.color || tokens.colors.text.tertiary;
+
+  return (
+    <Animated.View style={[styles.controlBadge, { opacity: pulseAnim }]}>
+      {/* Faction color dot */}
+      <View style={[styles.controlDot, { backgroundColor: badgeColor }]} />
+
+      {/* Faction name or status */}
+      <Text style={[styles.controlText, { color: badgeColor }]} numberOfLines={1}>
+        {isContested ? 'CONTESTED' : controllingFaction?.name?.split(' ')[0]?.toUpperCase() || 'UNKNOWN'}
+      </Text>
+
+      {/* Threat indicator for hostile territory */}
+      {threatLevel > 50 && (
+        <View style={styles.threatBadge}>
+          <Text style={styles.threatText}>!</Text>
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
 export function HeaderBar() {
   const { profileId } = useAuth();
   const alertLevel = useCockpitStore((s) => s.alertLevel);
@@ -199,14 +273,20 @@ export function HeaderBar() {
         />
       )}
 
-      {/* Left: Ship identifier */}
+      {/* Left: Ship identifier + Sector control */}
       <View style={styles.leftSection}>
         <Text style={styles.shipName} numberOfLines={1}>
           {shipStatus?.shipName || 'NO SHIP'}
         </Text>
-        <Text style={styles.location} numberOfLines={1}>
-          {shipStatus?.location || 'UNKNOWN'}
-        </Text>
+        <View style={styles.locationRow}>
+          <Text style={styles.location} numberOfLines={1}>
+            {shipStatus?.location || 'UNKNOWN'}
+          </Text>
+          <FactionControlBadge
+            sectorId={shipStatus?.location}
+            playerFactionId={undefined} // TODO: Get from player profile
+          />
+        </View>
       </View>
 
       {/* Center: Vitals + Throttle */}
@@ -280,6 +360,44 @@ const styles = StyleSheet.create({
     fontSize: tokens.typography.fontSize.xs,
     color: tokens.colors.text.secondary,
     fontFamily: tokens.typography.fontFamily.mono,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+  },
+  controlBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: tokens.radius.sm,
+  },
+  controlDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  controlText: {
+    fontSize: 8,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.text.tertiary,
+    textTransform: 'uppercase',
+  },
+  threatBadge: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: tokens.colors.alert.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  threatText: {
+    fontSize: 8,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.text.inverse,
   },
   centerSection: {
     flex: 2,

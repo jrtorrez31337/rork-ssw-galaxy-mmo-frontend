@@ -4,6 +4,7 @@ import { Character, CharacterAttributes } from '@/types/api';
 export interface CreateCharacterRequest {
   profile_id: string;
   name: string;
+  faction_id: string;
   home_sector: string;
   attributes: CharacterAttributes;
 }
