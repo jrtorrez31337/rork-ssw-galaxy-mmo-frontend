@@ -7,6 +7,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Manages user preferences that persist across sessions
  */
 
+/**
+ * View modes for SectorView2D
+ * Each mode projects the 3D sector onto a 2D plane from a different angle
+ */
+export type SectorViewMode = 'top-down' | 'side-left' | 'side-right' | 'front' | 'back';
+
+export const VIEW_MODE_LABELS: Record<SectorViewMode, string> = {
+  'top-down': 'Top Down (XY)',
+  'side-left': 'Side Left (ZY)',
+  'side-right': 'Side Right (ZY)',
+  'front': 'Front (XZ)',
+  'back': 'Back (XZ)',
+};
+
 interface SettingsState {
   // Chat settings
   profanityFilterEnabled: boolean;
@@ -16,11 +30,19 @@ interface SettingsState {
   showCoordinates: boolean;
   compactMode: boolean;
 
+  // Sector view settings
+  sectorViewMode: SectorViewMode;
+  sectorGridEnabled: boolean;
+  sectorDepthCuesEnabled: boolean;
+
   // Actions
   setProfanityFilter: (enabled: boolean) => void;
   setChatNotifications: (enabled: boolean) => void;
   setShowCoordinates: (enabled: boolean) => void;
   setCompactMode: (enabled: boolean) => void;
+  setSectorViewMode: (mode: SectorViewMode) => void;
+  setSectorGridEnabled: (enabled: boolean) => void;
+  setSectorDepthCuesEnabled: (enabled: boolean) => void;
   resetSettings: () => void;
 }
 
@@ -29,6 +51,9 @@ const defaultSettings = {
   chatNotificationsEnabled: true,
   showCoordinates: true,
   compactMode: false,
+  sectorViewMode: 'top-down' as SectorViewMode,
+  sectorGridEnabled: true,
+  sectorDepthCuesEnabled: true,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -43,6 +68,12 @@ export const useSettingsStore = create<SettingsState>()(
       setShowCoordinates: (enabled) => set({ showCoordinates: enabled }),
 
       setCompactMode: (enabled) => set({ compactMode: enabled }),
+
+      setSectorViewMode: (mode) => set({ sectorViewMode: mode }),
+
+      setSectorGridEnabled: (enabled) => set({ sectorGridEnabled: enabled }),
+
+      setSectorDepthCuesEnabled: (enabled) => set({ sectorDepthCuesEnabled: enabled }),
 
       resetSettings: () => set(defaultSettings),
     }),

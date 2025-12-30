@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, LayoutChangeEvent, Dimensions } from 'react-native';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Svg, { Circle, Polygon, Text as SvgText, G, Line, Rect } from 'react-native-svg';
 import {
   GestureDetector,
@@ -15,18 +15,23 @@ import type { NPCEntity } from '@/types/combat';
 import { getNPCColor } from '@/types/combat';
 import { useProcgenStore } from '@/stores/procgenStore';
 import { useSectorControl } from '@/hooks/useSectorControl';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { createProjector, sortByDepth, type ProjectedPoint } from '@/lib/sectorProjection';
 import {
   StarMarker,
   StationMarker,
   AsteroidFieldMarker,
   HazardMarker,
   AnomalyMarker,
-  PlanetMarker,
 } from '@/components/sector/ProcgenMarkers';
 import { TerritoryBorder } from '@/components/hud/TerritoryBorder';
 import { ThreatIndicator } from '@/components/hud/ThreatIndicator';
+import { ViewModeSelector } from '@/components/hud/ViewModeSelector';
 import type { Station } from '@/types/movement';
 import type { SectorShip } from '@/api/sectorEntities';
+
+// Sector dimensions: 20,000 units cubed (-10k to +10k on each axis)
+const SECTOR_SIZE = 20000;
 
 interface SectorView2DProps {
   npcs: NPCEntity[];
@@ -132,6 +137,9 @@ export default function SectorView2D({
   // Get sector control data for territory visualization
   const { controlData } = useSectorControl(sectorId);
 
+  // Get view settings
+  const { sectorViewMode, sectorGridEnabled, sectorDepthCuesEnabled } = useSettingsStore();
+
   // Load sector data when sectorId changes
   useEffect(() => {
     if (sectorId && showProcgen) {
@@ -151,15 +159,21 @@ export default function SectorView2D({
   // Calculate view size based on container width (with padding)
   // Use 300 as minimum/fallback until layout is measured
   const VIEW_SIZE = containerWidth > 32 ? containerWidth - 32 : 300;
-  const SCALE = VIEW_SIZE / 10000; // 10000 units = full view
 
+  // Scale factor for procgen markers (VIEW_SIZE pixels = SECTOR_SIZE units)
+  const SCALE = VIEW_SIZE / SECTOR_SIZE;
 
-  // Convert 3D position to 2D screen coordinates (using x, y, ignoring z for now)
-  const to2D = (pos: [number, number, number]): { x: number; y: number } => {
-    // Center the view and scale
-    const x = (pos[0] * SCALE) + (VIEW_SIZE / 2);
-    const y = (pos[1] * SCALE) + (VIEW_SIZE / 2);
-    return { x, y };
+  // Create projector for 3D to 2D conversion with depth cues
+  const project = useMemo(() => createProjector({
+    viewSize: VIEW_SIZE,
+    sectorSize: SECTOR_SIZE,
+    viewMode: sectorViewMode,
+    depthCuesEnabled: sectorDepthCuesEnabled,
+  }), [VIEW_SIZE, sectorViewMode, sectorDepthCuesEnabled]);
+
+  // Legacy helper for backward compatibility with simple position arrays
+  const to2D = (pos: [number, number, number]): ProjectedPoint => {
+    return project(pos);
   };
 
   // Ship triangle points (pointing up)
@@ -203,32 +217,34 @@ export default function SectorView2D({
         {/* Territory Border - faction control indicator */}
         <TerritoryBorder viewSize={VIEW_SIZE} controlData={controlData} />
 
-        {/* Grid lines */}
-        <G opacity={0.3}>
-          {[...Array(11)].map((_, i) => {
-            const pos = (i / 10) * VIEW_SIZE;
-            return (
-              <G key={i}>
-                <Line
-                  x1={pos}
-                  y1={0}
-                  x2={pos}
-                  y2={VIEW_SIZE}
-                  stroke={Colors.text}
-                  strokeWidth={1}
-                />
-                <Line
-                  x1={0}
-                  y1={pos}
-                  x2={VIEW_SIZE}
-                  y2={pos}
-                  stroke={Colors.text}
-                  strokeWidth={1}
-                />
-              </G>
-            );
-          })}
-        </G>
+        {/* Grid lines (toggleable) */}
+        {sectorGridEnabled && (
+          <G opacity={0.3}>
+            {[...Array(11)].map((_, i) => {
+              const pos = (i / 10) * VIEW_SIZE;
+              return (
+                <G key={i}>
+                  <Line
+                    x1={pos}
+                    y1={0}
+                    x2={pos}
+                    y2={VIEW_SIZE}
+                    stroke={Colors.text}
+                    strokeWidth={1}
+                  />
+                  <Line
+                    x1={0}
+                    y1={pos}
+                    x2={VIEW_SIZE}
+                    y2={pos}
+                    stroke={Colors.text}
+                    strokeWidth={1}
+                  />
+                </G>
+              );
+            })}
+          </G>
+        )}
 
         {/* Center crosshair */}
         <G>
@@ -274,25 +290,6 @@ export default function SectorView2D({
                 scale={0.5}
               />
             )}
-
-            {/* Planets */}
-            {sector.planets?.map((planet, index) => {
-              // Position planets around the star using orbit radius and index for angle
-              const angle = (index / (sector.planets?.length || 1)) * Math.PI * 2;
-              const distance = planet.orbitRadius * 500; // Scale AU to display units
-              const planetX = Math.cos(angle) * distance;
-              const planetY = Math.sin(angle) * distance;
-              const pos = to2D([planetX, planetY, 0]);
-              return (
-                <PlanetMarker
-                  key={planet.id}
-                  planet={planet}
-                  x={pos.x}
-                  y={pos.y}
-                  scale={0.8}
-                />
-              );
-            })}
 
             {/* Stations */}
             {sector.stations?.map((station) => {
@@ -352,35 +349,41 @@ export default function SectorView2D({
           </G>
         )}
 
-        {/* Database Stations (always visible - no scan required) */}
-        {dbStations.map((station) => {
-          const pos = to2D([station.position.x, station.position.y, station.position.z]);
+        {/* Database Stations (always visible - no scan required) - sorted by depth */}
+        {sortByDepth(
+          dbStations.map((station) => ({
+            ...station,
+            projected: to2D([station.position.x, station.position.y, station.position.z]),
+          }))
+        ).map((station) => {
+          const pos = station.projected;
+          const stationSize = 12 * pos.scale;
           return (
-            <G key={station.id}>
+            <G key={station.id} opacity={pos.opacity}>
               {/* Station square */}
               <Rect
-                x={pos.x - 12}
-                y={pos.y - 12}
-                width={24}
-                height={24}
+                x={pos.x - stationSize}
+                y={pos.y - stationSize}
+                width={stationSize * 2}
+                height={stationSize * 2}
                 fill="#10b981"
                 stroke="#10b981"
                 strokeWidth={2}
-                rx={4}
+                rx={4 * pos.scale}
               />
               {/* Glow effect */}
               <Circle
                 cx={pos.x}
                 cy={pos.y}
-                r={25}
+                r={25 * pos.scale}
                 fill="#10b981"
                 opacity={0.2}
               />
               {/* Name label */}
               <SvgText
                 x={pos.x}
-                y={pos.y - 20}
-                fontSize={9}
+                y={pos.y - (20 * pos.scale)}
+                fontSize={9 * pos.scale}
                 fill="#10b981"
                 textAnchor="middle"
                 fontWeight="600"
@@ -391,37 +394,35 @@ export default function SectorView2D({
           );
         })}
 
-        {/* Other Player Ships in Sector (always visible - no scan required) */}
-        {otherShips
-          .filter((ship) => ship.id !== currentShipId) // Exclude player's ship
-          .map((ship, index, filteredShips) => {
-            // Calculate position - spread ships in a circle if at same location
-            // This prevents stacking when all ships are at (0,0,0)
-            const basePos = to2D([ship.position.x, ship.position.y, ship.position.z]);
-            const spreadRadius = 60; // pixels to spread ships apart
-            const angle = (index / Math.max(filteredShips.length, 1)) * Math.PI * 2;
-            const offsetX = filteredShips.length > 1 ? Math.cos(angle) * spreadRadius : 0;
-            const offsetY = filteredShips.length > 1 ? Math.sin(angle) * spreadRadius : 0;
-            const pos = { x: basePos.x + offsetX, y: basePos.y + offsetY };
+        {/* Other Player Ships in Sector (always visible - no scan required) - sorted by depth */}
+        {sortByDepth(
+          otherShips
+            .filter((ship) => ship.id !== currentShipId) // Exclude player's ship
+            .map((ship) => ({
+              ...ship,
+              projected: to2D([ship.position.x, ship.position.y, ship.position.z]),
+            }))
+        ).map((ship) => {
+            const pos = ship.projected;
+            const diamondSize = 10 * pos.scale;
 
             // Purple for player ships
             const color = '#8b5cf6';
 
             return (
-              <G key={ship.id}>
+              <G key={ship.id} opacity={pos.opacity}>
                 {/* Ship diamond */}
                 <Polygon
-                  points={`${pos.x},${pos.y - 10} ${pos.x + 8},${pos.y} ${pos.x},${pos.y + 10} ${pos.x - 8},${pos.y}`}
+                  points={`${pos.x},${pos.y - diamondSize} ${pos.x + diamondSize * 0.8},${pos.y} ${pos.x},${pos.y + diamondSize} ${pos.x - diamondSize * 0.8},${pos.y}`}
                   fill={color}
                   stroke={color}
                   strokeWidth={1.5}
-                  opacity={0.85}
                 />
                 {/* Glow effect */}
                 <Circle
                   cx={pos.x}
                   cy={pos.y}
-                  r={15}
+                  r={15 * pos.scale}
                   fill={color}
                   opacity={0.15}
                 />
@@ -429,8 +430,8 @@ export default function SectorView2D({
                 {ship.name && (
                   <SvgText
                     x={pos.x}
-                    y={pos.y - 18}
-                    fontSize={8}
+                    y={pos.y - (18 * pos.scale)}
+                    fontSize={8 * pos.scale}
                     fill={color}
                     textAnchor="middle"
                     fontWeight="500"
@@ -447,11 +448,12 @@ export default function SectorView2D({
           <G>
             {(() => {
               const pos = to2D(playerPosition);
+              const playerShipSize = 20 * pos.scale;
               return (
-                <>
+                <G opacity={pos.opacity}>
                   {/* Player ship triangle */}
                   <Polygon
-                    points={getShipPoints(pos.x, pos.y, 20)}
+                    points={getShipPoints(pos.x, pos.y, playerShipSize)}
                     fill={Colors.primary}
                     stroke={Colors.primary}
                     strokeWidth={2}
@@ -460,41 +462,47 @@ export default function SectorView2D({
                   <Circle
                     cx={pos.x}
                     cy={pos.y}
-                    r={30}
+                    r={30 * pos.scale}
                     fill={Colors.primary}
                     opacity={0.2}
                   />
                   {/* Label */}
                   <SvgText
                     x={pos.x}
-                    y={pos.y + 40}
-                    fontSize={12}
+                    y={pos.y + (40 * pos.scale)}
+                    fontSize={12 * pos.scale}
                     fill={Colors.primary}
                     textAnchor="middle"
                     fontWeight="bold"
                   >
                     YOU
                   </SvgText>
-                </>
+                </G>
               );
             })()}
           </G>
         )}
 
-        {/* NPC ships */}
-        {npcs.map((npc) => {
-          const pos = to2D(npc.position);
+        {/* NPC ships - sorted by depth for proper z-ordering */}
+        {sortByDepth(
+          npcs.map((npc) => ({
+            ...npc,
+            projected: to2D(npc.position),
+          }))
+        ).map((npc) => {
+          const pos = npc.projected;
           const color = getNPCColor(npc.npc_type);
           const isSelected = npc.entity_id === selectedNPCId;
+          const shipSize = 15 * pos.scale;
 
           return (
-            <G key={npc.entity_id}>
+            <G key={npc.entity_id} opacity={pos.opacity}>
               {/* Selection ring */}
               {isSelected && (
                 <Circle
                   cx={pos.x}
                   cy={pos.y}
-                  r={25}
+                  r={25 * pos.scale}
                   fill="none"
                   stroke={color}
                   strokeWidth={3}
@@ -504,18 +512,17 @@ export default function SectorView2D({
 
               {/* NPC ship */}
               <Polygon
-                points={getShipPoints(pos.x, pos.y)}
+                points={getShipPoints(pos.x, pos.y, shipSize)}
                 fill={color}
                 stroke={color}
                 strokeWidth={1.5}
-                opacity={0.9}
               />
 
               {/* Glow effect */}
               <Circle
                 cx={pos.x}
                 cy={pos.y}
-                r={20}
+                r={20 * pos.scale}
                 fill={color}
                 opacity={0.15}
               />
@@ -523,8 +530,8 @@ export default function SectorView2D({
               {/* Name label */}
               <SvgText
                 x={pos.x}
-                y={pos.y - 25}
-                fontSize={10}
+                y={pos.y - (25 * pos.scale)}
+                fontSize={10 * pos.scale}
                 fill={color}
                 textAnchor="middle"
                 fontWeight="600"
@@ -538,6 +545,9 @@ export default function SectorView2D({
             </View>
           </Animated.View>
         </GestureDetector>
+
+          {/* View Mode Selector */}
+          <ViewModeSelector />
 
           {/* Threat Indicator Overlay */}
           <ThreatIndicator
