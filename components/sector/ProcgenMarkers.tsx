@@ -69,7 +69,7 @@ export function StarMarker({
         textAnchor="middle"
         opacity={0.8}
       >
-        {star.type} Star
+        {star.type && star.type !== 'none' ? `${star.type} Star` : 'Star'}
       </SvgText>
     </G>
   );
