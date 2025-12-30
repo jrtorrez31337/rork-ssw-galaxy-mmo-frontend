@@ -1,14 +1,26 @@
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { useEffect } from 'react';
 import Svg, { Circle, Polygon, Text as SvgText, G, Line } from 'react-native-svg';
 import Colors from '@/constants/colors';
 import type { NPCEntity } from '@/types/combat';
 import { getNPCColor } from '@/types/combat';
+import { useProcgenStore } from '@/stores/procgenStore';
+import {
+  StarMarker,
+  StationMarker,
+  AsteroidFieldMarker,
+  HazardMarker,
+  AnomalyMarker,
+  PlanetMarker,
+} from '@/components/sector/ProcgenMarkers';
 
 interface SectorView2DProps {
   npcs: NPCEntity[];
   playerPosition?: [number, number, number];
   onNPCPress?: (npc: NPCEntity) => void;
   selectedNPCId?: string;
+  sectorId?: string;
+  showProcgen?: boolean;
 }
 
 /**
@@ -20,9 +32,30 @@ export default function SectorView2D({
   playerPosition,
   onNPCPress,
   selectedNPCId,
+  sectorId,
+  showProcgen = true,
 }: SectorView2DProps) {
   // Use hook for dynamic window dimensions (fixes iOS Expo Go rendering issue)
   const { width: screenWidth } = useWindowDimensions();
+
+  // Get procgen store for sector content
+  const { getSector, enterSector } = useProcgenStore();
+
+  // Load sector data when sectorId changes
+  useEffect(() => {
+    if (sectorId && showProcgen) {
+      // Check if sector not already loaded
+      if (!getSector(sectorId)) {
+        // enterSector handles both generation and sync
+        enterSector(sectorId).catch((err) => {
+          console.debug('[SectorView2D] Failed to load sector:', err);
+        });
+      }
+    }
+  }, [sectorId, showProcgen, getSector, enterSector]);
+
+  // Get current sector data
+  const sector = sectorId ? getSector(sectorId) : null;
 
   // Calculate view size based on current screen width
   // Fallback to 300 if width is not yet available
@@ -108,6 +141,96 @@ export default function SectorView2D({
             opacity={0.5}
           />
         </G>
+
+        {/* Procgen Content - rendered below ships for layering */}
+        {showProcgen && sector && (
+          <G>
+            {/* Central Star */}
+            {sector.star && (
+              <StarMarker
+                star={sector.star}
+                x={VIEW_SIZE / 2}
+                y={VIEW_SIZE / 2}
+                scale={0.5}
+              />
+            )}
+
+            {/* Planets */}
+            {sector.planets?.map((planet, index) => {
+              // Position planets around the star using orbit radius and index for angle
+              const angle = (index / (sector.planets?.length || 1)) * Math.PI * 2;
+              const distance = planet.orbitRadius * 500; // Scale AU to display units
+              const planetX = Math.cos(angle) * distance;
+              const planetY = Math.sin(angle) * distance;
+              const pos = to2D([planetX, planetY, 0]);
+              return (
+                <PlanetMarker
+                  key={planet.id}
+                  planet={planet}
+                  x={pos.x}
+                  y={pos.y}
+                  scale={0.8}
+                />
+              );
+            })}
+
+            {/* Stations */}
+            {sector.stations?.map((station) => {
+              const pos = to2D([station.positionX, station.positionY, station.positionZ]);
+              return (
+                <StationMarker
+                  key={station.id}
+                  station={station}
+                  x={pos.x}
+                  y={pos.y}
+                  scale={1}
+                />
+              );
+            })}
+
+            {/* Asteroid Fields */}
+            {sector.asteroidFields?.map((field) => {
+              const pos = to2D([field.centerX, field.centerY, field.centerZ]);
+              return (
+                <AsteroidFieldMarker
+                  key={field.id}
+                  field={field}
+                  x={pos.x}
+                  y={pos.y}
+                  scale={SCALE}
+                />
+              );
+            })}
+
+            {/* Hazards */}
+            {sector.hazards?.map((hazard) => {
+              const pos = to2D([hazard.positionX, hazard.positionY, hazard.positionZ]);
+              return (
+                <HazardMarker
+                  key={hazard.id}
+                  hazard={hazard}
+                  x={pos.x}
+                  y={pos.y}
+                  scale={SCALE}
+                />
+              );
+            })}
+
+            {/* Anomalies */}
+            {sector.anomalies?.map((anomaly) => {
+              const pos = to2D([anomaly.positionX, anomaly.positionY, anomaly.positionZ]);
+              return (
+                <AnomalyMarker
+                  key={anomaly.id}
+                  anomaly={anomaly}
+                  x={pos.x}
+                  y={pos.y}
+                  scale={SCALE}
+                />
+              );
+            })}
+          </G>
+        )}
 
         {/* Player ship */}
         {playerPosition && (
@@ -221,6 +344,28 @@ export default function SectorView2D({
           <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
           <Text style={styles.legendText}>Patrol</Text>
         </View>
+        {showProcgen && sector && (
+          <>
+            {sector.star && (
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#FFFF66' }]} />
+                <Text style={styles.legendText}>Star</Text>
+              </View>
+            )}
+            {sector.stations && sector.stations.length > 0 && (
+              <View style={styles.legendItem}>
+                <View style={[styles.legendSquare, { backgroundColor: '#10b981' }]} />
+                <Text style={styles.legendText}>Station</Text>
+              </View>
+            )}
+            {sector.asteroidFields && sector.asteroidFields.length > 0 && (
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#8B7355' }]} />
+                <Text style={styles.legendText}>Asteroids</Text>
+              </View>
+            )}
+          </>
+        )}
       </View>
 
       {/* Info */}
@@ -259,6 +404,11 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+  legendSquare: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
   },
   legendText: {
     fontSize: 12,

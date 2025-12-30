@@ -12,9 +12,11 @@ import { combatApi } from '@/api/combat';
 import { movementApi } from '@/api/movement';
 import { useCombatEvents } from '@/hooks/useCombatEvents';
 import { useTravelEvents } from '@/hooks/useTravelEvents';
+import { useSectorDeltas } from '@/hooks/useProcgenEvents';
 import { useNPCStore } from '@/stores/npcStore';
 import { useCombatStore } from '@/stores/combatStore';
 import { useTravelStore } from '@/stores/travelStore';
+import { useProcgenStore, selectCurrentSectorMetadata } from '@/stores/procgenStore';
 import SectorView2D from '@/components/npc/SectorView2D';
 import NPCList from '@/components/npc/NPCList';
 import CombatHUD from '@/components/combat/CombatHUD';
@@ -44,7 +46,7 @@ export default function MapTab() {
   });
 
   const currentShip = ships?.[0] || null;
-  const currentSector = currentShip?.location_sector || '0,0,0';
+  const currentSector = currentShip?.location_sector || '0.0.0';
 
   // Fetch stations in current sector for mini-map
   const { data: stationsData } = useQuery({
@@ -56,9 +58,16 @@ export default function MapTab() {
   const { npcs, selectedNPC, setNPCs, setSelectedNPC, setLoading, setError } = useNPCStore();
   const { isInCombat, setCombatInstance } = useCombatStore();
   const { isInTransit } = useTravelStore();
+  const { enterSector, leaveSector, fetchSectorMetadata, getDisplayName, getFactionInfo } = useProcgenStore();
+  const currentMetadata = useProcgenStore(selectCurrentSectorMetadata);
 
   // Subscribe to combat events
   useCombatEvents(profileId || '');
+
+  // Subscribe to real-time sector delta updates (procgen changes)
+  useSectorDeltas(currentSector, (delta) => {
+    console.log('[MapTab] Sector delta received:', delta.deltaType);
+  });
 
   // Subscribe to travel events with callbacks for notifications
   useTravelEvents(profileId || '', {
@@ -94,6 +103,27 @@ export default function MapTab() {
       loadNPCs();
     }
   }, [currentSector, currentShip?.docked_at]);
+
+  // Load procgen sector data when entering a sector
+  useEffect(() => {
+    if (currentShip && !currentShip.docked_at && currentSector) {
+      enterSector(currentSector).catch((err) => {
+        console.debug('[MapTab] Failed to load procgen sector:', err);
+      });
+
+      // Fetch sector metadata (name, faction info)
+      fetchSectorMetadata(currentSector).catch((err) => {
+        console.debug('[MapTab] Failed to load sector metadata:', err);
+      });
+    }
+
+    // Cleanup: leave sector when unmounting or changing sectors
+    return () => {
+      if (currentSector) {
+        leaveSector(currentSector);
+      }
+    };
+  }, [currentSector, currentShip?.docked_at, enterSector, leaveSector, fetchSectorMetadata]);
 
   const loadNPCs = async () => {
     try {
@@ -182,11 +212,31 @@ export default function MapTab() {
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <Text variant="heading" weight="bold">
-                Sector View
+                {currentMetadata?.name || 'Sector View'}
               </Text>
-              <Text variant="caption" color={tokens.colors.text.secondary}>
-                {currentSector}
-              </Text>
+              <View style={styles.sectorInfo}>
+                <Text variant="caption" color={tokens.colors.text.secondary}>
+                  {currentSector}
+                </Text>
+                {currentMetadata?.factionName && (
+                  <Text
+                    variant="caption"
+                    style={{ marginLeft: tokens.spacing[2] }}
+                    color={getFactionInfo(currentSector).color}
+                  >
+                    [{currentMetadata.factionTag}]
+                  </Text>
+                )}
+                {currentMetadata?.isContested && (
+                  <Text
+                    variant="caption"
+                    style={{ marginLeft: tokens.spacing[2] }}
+                    color={tokens.colors.warning}
+                  >
+                    Contested
+                  </Text>
+                )}
+              </View>
             </View>
             <Button
               variant="secondary"
@@ -206,6 +256,8 @@ export default function MapTab() {
                 npcs={npcs}
                 playerPosition={playerPosition}
                 selectedNPCId={selectedNPC?.entity_id}
+                sectorId={currentSector}
+                showProcgen={true}
               />
             </View>
 
@@ -339,6 +391,10 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     gap: tokens.spacing[1],
+  },
+  sectorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   content: {
     flex: 1,

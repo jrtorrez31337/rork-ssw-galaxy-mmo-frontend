@@ -35,18 +35,34 @@ export interface NPCListResponse {
   npcs: NPCEntity[];
 }
 
+// Response from /v1/sectors/{sector_id}/npcs
+interface NPCsResponse {
+  sector_id: string;
+  count: number;
+  npcs: Array<{
+    npc_id: string;
+    ship_id: string;
+    npc_type: string;
+    behavior: string;
+    faction: string;
+    faction_id?: string;
+    position: number[];
+    threat_rating: number;
+  }>;
+}
+
 export const npcApi = {
   /**
    * Get NPCs in a sector
-   * Uses GET /v1/sectors/{sector_id}/state per 03B-WORLDSIM.apib (line 90)
+   * Uses GET /v1/sectors/{sector_id}/npcs
    *
-   * @param sector - Sector coordinates in "x,y,z" format
+   * @param sector - Sector coordinates in "x.y.z" format
    * @returns List of NPC entities in the sector
    */
   getNPCsInSector: async (sector: string): Promise<NPCListResponse> => {
     try {
-      const response = await apiClient.get<{ data: SectorStateResponse }>(
-        `/sectors/${sector}/state`
+      const response = await apiClient.get<{ data: NPCsResponse }>(
+        `/sectors/${sector}/npcs`
       );
 
       // Transform backend NPC format to frontend NPCEntity format
@@ -56,9 +72,9 @@ export const npcApi = {
         name: `${npc.npc_type}-${npc.npc_id.substring(0, 8)}`,
         npc_type: npc.npc_type as NPCEntity['npc_type'],
         faction: npc.faction,
-        position: [npc.position.x, npc.position.y, npc.position.z] as [number, number, number],
-        velocity: [0, 0, 0] as [number, number, number], // NPCs are stationary in state endpoint
-        hull: 100, // Not provided by state endpoint, use defaults
+        position: npc.position as [number, number, number],
+        velocity: [0, 0, 0] as [number, number, number],
+        hull: 100,
         hull_max: 100,
         shield: 50,
         shield_max: 50,
@@ -66,11 +82,10 @@ export const npcApi = {
 
       return { sector, npcs };
     } catch (error: any) {
-      // If sector state endpoint fails, return empty list
-      // (sector might not have any NPCs or might not exist)
+      // If NPC endpoint fails, return empty list
       const errorMsg = error.message?.toLowerCase() || '';
-      if (errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('sector')) {
-        console.log(`[NPC API] No NPCs in sector ${sector} (sector may not exist yet)`);
+      if (errorMsg.includes('404') || errorMsg.includes('not found')) {
+        console.log(`[NPC API] No NPCs in sector ${sector}`);
         return { sector, npcs: [] };
       }
       throw error;

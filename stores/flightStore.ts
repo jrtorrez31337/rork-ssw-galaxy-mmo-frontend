@@ -16,6 +16,7 @@ import {
   applyAxisCoupling,
   clamp,
 } from '@/lib/flight/metrics';
+import { usePositionStore } from './positionStore';
 
 /**
  * Flight Store - Cinematic Arcade Flight State Management
@@ -414,6 +415,23 @@ export const useFlightStore = create<FlightStore>()(
         },
         attitude: decayedAttitude,
       });
+
+      // Update position based on flight input
+      // This bridges visual flight controls to actual position tracking
+      if (!state.controlsLocked && smoothedThrottle > 0.01) {
+        const positionStore = usePositionStore.getState();
+        positionStore.applyFlightInput(
+          smoothedThrottle,
+          decayedAttitude.pitch.smoothed,
+          decayedAttitude.yaw.smoothed,
+          decayedAttitude.roll.smoothed,
+          deltaTime,
+          profile.maxSpeed,
+          profile.pitchSpeed,
+          profile.yawSpeed,
+          profile.rollSpeed
+        );
+      }
     },
 
     // Reset to initial state

@@ -40,10 +40,10 @@ export function generateAsteroidFields(rng: SeededRNG): AsteroidField[] {
  * Generate a single asteroid field
  */
 function generateAsteroidField(rng: SeededRNG, index: number): AsteroidField {
-  // Resources - ore is always present
-  const resources: ResourceType[] = ['ore'];
-  if (rng.next() < 0.3) resources.push('crystals');
-  if (rng.next() < 0.2) resources.push('rare_metals');
+  // Resource types - ore is always present
+  const resourceTypes: ResourceType[] = ['ore'];
+  if (rng.next() < 0.3) resourceTypes.push('crystals');
+  if (rng.next() < 0.2) resourceTypes.push('rare_metals');
 
   // Position within sector
   const centerX = rng.nextFloat(-8000, 8000);
@@ -70,7 +70,8 @@ function generateAsteroidField(rng: SeededRNG, index: number): AsteroidField {
     id: `asteroid_field_${index}`,
     density,
     richness,
-    resources,
+    resourceTypes,
+    resources: [], // Populated by state sync from server deltas
     centerX,
     centerY,
     centerZ,

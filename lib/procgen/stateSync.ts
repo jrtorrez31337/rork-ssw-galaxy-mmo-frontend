@@ -14,7 +14,7 @@
 import { config } from '@/constants/config';
 import { storage } from '@/utils/storage';
 import { sectorCache } from './cache';
-import type { Sector, SectorDelta, DeltaType } from './types';
+import type { Sector, SectorDelta, DeltaType, NavigationHazard, HazardType } from './types';
 
 // Delta response from server
 interface DeltaResponse {
@@ -79,8 +79,8 @@ class StateSync {
   private pendingSync: Map<string, Promise<SyncResult>> = new Map();
 
   constructor() {
-    // Use worldsim service URL from config
-    this.baseUrl = config.API_URL;
+    // Use base URL from config (strip /v1 suffix as we add it in request paths)
+    this.baseUrl = config.API_BASE_URL.replace('/v1', '');
   }
 
   /**
@@ -552,12 +552,19 @@ class StateSync {
       return sector;
     }
 
-    const newHazard = {
+    const position = delta.changes.position ?? { x: 0, y: 0, z: 0 };
+    const newHazard: NavigationHazard = {
       id: delta.targetId ?? `hazard_${Date.now()}`,
-      type: delta.changes.hazardType,
-      position: delta.changes.position,
-      radius: delta.changes.radius,
-      severity: delta.changes.severity,
+      type: (delta.changes.hazardType ?? 'debris_field') as HazardType,
+      positionX: position.x ?? 0,
+      positionY: position.y ?? 0,
+      positionZ: position.z ?? 0,
+      radius: delta.changes.radius ?? 1000,
+      severity: delta.changes.severity ?? 0.5,
+      damagePerSecond: delta.changes.damagePerSecond ?? 5,
+      visualIntensity: delta.changes.visualIntensity ?? 0.5,
+      warningColor: delta.changes.warningColor ?? '#FF6600',
+      particleCount: delta.changes.particleCount ?? 100,
     };
 
     return {

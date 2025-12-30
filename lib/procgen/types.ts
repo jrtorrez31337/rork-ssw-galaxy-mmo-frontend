@@ -592,6 +592,84 @@ export function extractHashData(sector: GeneratedSector): SectorHashData {
 }
 
 // =============================================================================
+// SECTOR METADATA (NAMING & FACTION CONTROL)
+// =============================================================================
+
+/**
+ * Control type for sector faction control
+ */
+export type ControlType = 'influence' | 'admin_override' | 'unclaimed';
+
+/**
+ * Sector classification type
+ */
+export type SectorClassification =
+  | 'normal'
+  | 'core'
+  | 'frontier'
+  | 'hazardous'
+  | 'restricted'
+  | 'capital';
+
+/**
+ * Sector metadata from the backend
+ * Contains naming, faction control, and classification info
+ */
+export interface SectorMetadata {
+  sectorId: string;
+  name: string | null;
+  factionId: string | null;
+  factionName: string | null;
+  factionTag: string | null;
+  controlType: ControlType;
+  influenceScores?: Record<string, number>;
+  isContested: boolean;
+  population: number;
+  threatLevel: number;
+  sectorType: SectorClassification;
+  description: string | null;
+  discoveredBy: string | null;
+  discoveredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Faction colors for UI rendering
+ * Matches faction UUIDs from seeded data
+ */
+export const FACTION_COLORS: Record<string, string> = {
+  '11111111-1111-1111-1111-111111111111': '#4169E1', // Terran Federation - Royal Blue
+  '22222222-2222-2222-2222-222222222222': '#8B008B', // Void Consortium - Dark Magenta
+  '33333333-3333-3333-3333-333333333333': '#FFD700', // Stellar Imperium - Gold
+  '44444444-4444-4444-4444-444444444444': '#228B22', // Free Traders League - Forest Green
+  '55555555-5555-5555-5555-555555555555': '#FF8C00', // Frontier Coalition - Dark Orange
+};
+
+/**
+ * Get faction color by ID
+ */
+export function getFactionColor(factionId: string | null): string {
+  if (!factionId) return '#666666'; // Gray for unclaimed
+  return FACTION_COLORS[factionId] || '#888888';
+}
+
+/**
+ * Get display name for a sector
+ * Returns the name if set, otherwise coordinates
+ */
+export function getSectorDisplayName(
+  metadata: SectorMetadata | null,
+  sectorId: string
+): string {
+  if (metadata?.name) {
+    return metadata.name;
+  }
+  // Return sector coordinates in display format
+  return sectorId.replace(/_/g, '.');
+}
+
+// =============================================================================
 // TYPE ALIASES
 // =============================================================================
 

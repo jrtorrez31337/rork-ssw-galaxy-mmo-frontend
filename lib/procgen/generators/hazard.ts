@@ -122,6 +122,7 @@ function generateHazard(rng: SeededRNG, type: HazardType): NavigationHazard {
   const particleCount = Math.floor(config.particleCount * (0.5 + severity * 0.5));
 
   return {
+    id: `hazard_${type}_${rng.nextInt(0, 999999)}`,
     type,
     positionX,
     positionY,

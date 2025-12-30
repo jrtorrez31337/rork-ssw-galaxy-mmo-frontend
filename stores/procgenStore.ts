@@ -12,7 +12,10 @@ import type {
   SectorDelta,
   Coordinates,
   SectorType,
+  SectorMetadata,
 } from '@/lib/procgen/types';
+import { getSectorDisplayName, getFactionColor } from '@/lib/procgen/types';
+import { config } from '@/constants/config';
 
 /**
  * Procgen Store
@@ -37,6 +40,14 @@ interface SectorEntry {
 }
 
 /**
+ * Sector metadata cache entry
+ */
+interface MetadataEntry {
+  metadata: SectorMetadata;
+  fetchedAt: number;
+}
+
+/**
  * Procgen store state
  */
 interface ProcgenState {
@@ -47,6 +58,9 @@ interface ProcgenState {
 
   // Loaded sectors cache (in-memory for quick access)
   loadedSectors: Map<string, SectorEntry>;
+
+  // Sector metadata cache
+  sectorMetadata: Map<string, MetadataEntry>;
 
   // Pending sync operations
   syncingCount: number;
@@ -61,6 +75,12 @@ interface ProcgenState {
   preloadSectors: (sectorIds: string[]) => Promise<void>;
   clearCache: () => void;
   getCacheStats: () => { loaded: number; syncing: number };
+
+  // Metadata actions
+  fetchSectorMetadata: (sectorId: string) => Promise<SectorMetadata | null>;
+  getMetadata: (sectorId: string) => SectorMetadata | null;
+  getDisplayName: (sectorId: string) => string;
+  getFactionInfo: (sectorId: string) => { factionId: string | null; factionName: string | null; color: string };
 }
 
 export const useProcgenStore = create<ProcgenState>()(
@@ -70,6 +90,7 @@ export const useProcgenStore = create<ProcgenState>()(
     currentSector: null,
     currentVersion: 0,
     loadedSectors: new Map(),
+    sectorMetadata: new Map(),
     syncingCount: 0,
 
     /**
@@ -452,6 +473,7 @@ export const useProcgenStore = create<ProcgenState>()(
         currentSector: null,
         currentVersion: 0,
         loadedSectors: new Map(),
+        sectorMetadata: new Map(),
         syncingCount: 0,
       });
       console.log('[ProcgenStore] Cache cleared');
@@ -467,6 +489,95 @@ export const useProcgenStore = create<ProcgenState>()(
         syncing: state.syncingCount,
       };
     },
+
+    /**
+     * Fetch sector metadata from server
+     */
+    fetchSectorMetadata: async (sectorId: string): Promise<SectorMetadata | null> => {
+      const state = get();
+
+      // Check cache first (5 minute TTL)
+      const cached = state.sectorMetadata.get(sectorId);
+      if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
+        return cached.metadata;
+      }
+
+      try {
+        const response = await fetch(`${config.API_BASE_URL}/sectors/${sectorId}/metadata`);
+        if (!response.ok) {
+          console.warn(`[ProcgenStore] Failed to fetch metadata for ${sectorId}: ${response.status}`);
+          return null;
+        }
+
+        const json = await response.json();
+        if (!json.data) {
+          return null;
+        }
+
+        // Map snake_case to camelCase
+        const metadata: SectorMetadata = {
+          sectorId: json.data.sector_id,
+          name: json.data.name || null,
+          factionId: json.data.faction_id || null,
+          factionName: json.data.faction_name || null,
+          factionTag: json.data.faction_tag || null,
+          controlType: json.data.control_type,
+          influenceScores: json.data.influence_scores,
+          isContested: json.data.is_contested,
+          population: json.data.population,
+          threatLevel: json.data.threat_level,
+          sectorType: json.data.sector_type,
+          description: json.data.description || null,
+          discoveredBy: json.data.discovered_by || null,
+          discoveredAt: json.data.discovered_at || null,
+          createdAt: json.data.created_at,
+          updatedAt: json.data.updated_at,
+        };
+
+        // Update cache
+        const newMetadata = new Map(get().sectorMetadata);
+        newMetadata.set(sectorId, {
+          metadata,
+          fetchedAt: Date.now(),
+        });
+        set({ sectorMetadata: newMetadata });
+
+        console.log(`[ProcgenStore] Fetched metadata for ${sectorId}: ${metadata.name || 'Unnamed'}`);
+        return metadata;
+      } catch (error) {
+        console.error(`[ProcgenStore] Error fetching metadata for ${sectorId}:`, error);
+        return null;
+      }
+    },
+
+    /**
+     * Get cached metadata for a sector
+     */
+    getMetadata: (sectorId: string): SectorMetadata | null => {
+      const entry = get().sectorMetadata.get(sectorId);
+      return entry?.metadata || null;
+    },
+
+    /**
+     * Get display name for a sector (name if set, otherwise coordinates)
+     */
+    getDisplayName: (sectorId: string): string => {
+      const entry = get().sectorMetadata.get(sectorId);
+      return getSectorDisplayName(entry?.metadata || null, sectorId);
+    },
+
+    /**
+     * Get faction info for a sector
+     */
+    getFactionInfo: (sectorId: string): { factionId: string | null; factionName: string | null; color: string } => {
+      const entry = get().sectorMetadata.get(sectorId);
+      const metadata = entry?.metadata;
+      return {
+        factionId: metadata?.factionId || null,
+        factionName: metadata?.factionName || null,
+        color: getFactionColor(metadata?.factionId || null),
+      };
+    },
   }))
 );
 
@@ -476,3 +587,7 @@ export const selectCurrentVersion = (state: ProcgenState) => state.currentVersio
 export const selectIsSyncing = (state: ProcgenState) => state.syncingCount > 0;
 export const selectSectorEntry = (sectorId: string) => (state: ProcgenState) =>
   state.loadedSectors.get(sectorId);
+export const selectSectorMetadata = (sectorId: string) => (state: ProcgenState) =>
+  state.sectorMetadata.get(sectorId)?.metadata || null;
+export const selectCurrentSectorMetadata = (state: ProcgenState) =>
+  state.currentSectorId ? state.sectorMetadata.get(state.currentSectorId)?.metadata || null : null;

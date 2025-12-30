@@ -70,17 +70,31 @@ export function coordsToSectorId(x: number, y: number, z: number): string {
 
 /**
  * Parse sector ID back to coordinates
+ * Accepts both internal format "sector_X_Y_Z" and display format "X.Y.Z"
  */
 export function sectorIdToCoords(sectorId: string): Coordinates | null {
-  const match = sectorId.match(/^sector_(-?\d+)_(-?\d+)_(-?\d+)$/);
-  if (!match) {
-    return null;
+  // Try internal format first: sector_X_Y_Z
+  const internalMatch = sectorId.match(/^sector_(-?\d+)_(-?\d+)_(-?\d+)$/);
+  if (internalMatch) {
+    return {
+      x: parseInt(internalMatch[1], 10),
+      y: parseInt(internalMatch[2], 10),
+      z: parseInt(internalMatch[3], 10),
+    };
   }
-  return {
-    x: parseInt(match[1], 10),
-    y: parseInt(match[2], 10),
-    z: parseInt(match[3], 10),
-  };
+
+  // Try display format: X.Y.Z (used by backend)
+  const displayParts = sectorId.split('.');
+  if (displayParts.length === 3) {
+    const x = parseInt(displayParts[0], 10);
+    const y = parseInt(displayParts[1], 10);
+    const z = parseInt(displayParts[2], 10);
+    if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+      return { x, y, z };
+    }
+  }
+
+  return null;
 }
 
 /**
