@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { Rocket, Mail, Lock } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import Colors from '@/constants/colors';
+import { validateEmail } from '@/utils/validation';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -28,9 +29,16 @@ export default function LoginScreen() {
       return;
     }
 
+    // Validate email format
+    const emailResult = validateEmail(email);
+    if (!emailResult.isValid) {
+      setError(emailResult.error!);
+      return;
+    }
+
     try {
       setError('');
-      await login({ email, password });
+      await login({ email: email.trim(), password });
       router.replace('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -68,6 +76,7 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
+              maxLength={254}
             />
           </View>
 
@@ -84,6 +93,7 @@ export default function LoginScreen() {
               secureTextEntry
               autoCapitalize="none"
               autoComplete="password"
+              maxLength={128}
             />
           </View>
 

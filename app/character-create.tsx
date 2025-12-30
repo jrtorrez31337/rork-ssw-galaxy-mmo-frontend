@@ -12,6 +12,7 @@ import { useMutation } from '@tanstack/react-query';
 import { User, ChevronLeft, ChevronRight, Check } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { characterApi } from '@/api/characters';
+import { validateName } from '@/utils/validation';
 import { CharacterAttributes } from '@/types/api';
 import { FactionId, FACTION_METADATA, FACTION_UUIDS } from '@/types/factions';
 import FactionSelectionStep from '@/components/character-create/FactionSelectionStep';
@@ -60,6 +61,7 @@ export default function CharacterCreateScreen() {
 
   // Form state
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState('');
   const [selectedFaction, setSelectedFaction] = useState<FactionId | null>(null);
   const [attributes, setAttributes] = useState<CharacterAttributes>({
     piloting: 4,
@@ -113,8 +115,20 @@ export default function CharacterCreateScreen() {
     },
   });
 
+  // Name change handler with validation
+  const handleNameChange = (text: string) => {
+    setName(text);
+    if (text.trim().length > 0) {
+      const result = validateName(text);
+      setNameError(result.isValid ? '' : result.error || '');
+    } else {
+      setNameError('');
+    }
+  };
+
   // Validation for each step
-  const canProceedFromName = name.length >= 3 && name.length <= 32;
+  const nameValidation = validateName(name);
+  const canProceedFromName = nameValidation.isValid;
   const canProceedFromFaction = selectedFaction !== null;
   const canSubmit = canProceedFromName && canProceedFromFaction && remaining === 0;
 
@@ -166,15 +180,19 @@ export default function CharacterCreateScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Character Name</Text>
             <TextInput
-              style={styles.nameInput}
+              style={[styles.nameInput, nameError ? styles.nameInputError : null]}
               placeholder="Enter character name"
               placeholderTextColor={Colors.textDim}
               value={name}
-              onChangeText={setName}
+              onChangeText={handleNameChange}
               maxLength={32}
               autoFocus
             />
-            <Text style={styles.helperText}>3-32 characters</Text>
+            {nameError ? (
+              <Text style={styles.errorHelperText}>{nameError}</Text>
+            ) : (
+              <Text style={styles.helperText}>3-32 characters, letters, numbers, spaces, and basic punctuation</Text>
+            )}
           </View>
         );
 
@@ -462,9 +480,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  nameInputError: {
+    borderColor: Colors.danger,
+  },
   helperText: {
     fontSize: 12,
     color: Colors.textDim,
+    marginTop: 8,
+  },
+  errorHelperText: {
+    fontSize: 12,
+    color: Colors.danger,
     marginTop: 8,
   },
   pointsHeader: {

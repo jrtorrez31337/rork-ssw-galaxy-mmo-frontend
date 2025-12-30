@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { Rocket, Mail, Lock, User } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import Colors from '@/constants/colors';
+import { validateEmail, validateDisplayName, validatePassword } from '@/utils/validation';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -24,19 +25,30 @@ export default function SignupScreen() {
   const [error, setError] = useState('');
 
   const handleSignup = async () => {
-    if (!email || !password || !displayName) {
-      setError('Please fill in all fields');
+    // Validate email
+    const emailResult = validateEmail(email);
+    if (!emailResult.isValid) {
+      setError(emailResult.error!);
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    // Validate display name
+    const displayNameResult = validateDisplayName(displayName);
+    if (!displayNameResult.isValid) {
+      setError(displayNameResult.error!);
+      return;
+    }
+
+    // Validate password
+    const passwordResult = validatePassword(password);
+    if (!passwordResult.isValid) {
+      setError(passwordResult.error!);
       return;
     }
 
     try {
       setError('');
-      await signup({ email, password, display_name: displayName });
+      await signup({ email: email.trim(), password, display_name: displayName.trim() });
       router.replace('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed');
@@ -67,11 +79,12 @@ export default function SignupScreen() {
             </View>
             <TextInput
               style={styles.input}
-              placeholder="Display Name"
+              placeholder="Display Name (3-32 characters)"
               placeholderTextColor={Colors.textDim}
               value={displayName}
               onChangeText={setDisplayName}
               autoCapitalize="words"
+              maxLength={32}
             />
           </View>
 
@@ -88,6 +101,7 @@ export default function SignupScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
+              maxLength={254}
             />
           </View>
 
@@ -104,6 +118,7 @@ export default function SignupScreen() {
               secureTextEntry
               autoCapitalize="none"
               autoComplete="password"
+              maxLength={128}
             />
           </View>
 

@@ -116,7 +116,7 @@ export default function ShipCustomizeScreen() {
       shipApi.create({
         owner_id: profileId!,
         ship_type: shipType,
-        name: name || undefined,
+        name: name.trim(),
         stat_allocation: stats,
       }),
     onSuccess: () => {
@@ -124,7 +124,8 @@ export default function ShipCustomizeScreen() {
     },
   });
 
-  const canSubmit = remaining === 0;
+  const isValidName = name.trim().length >= 3 && name.trim().length <= 32;
+  const canSubmit = remaining === 0 && isValidName;
 
   return (
     <View style={styles.container}>
@@ -148,15 +149,23 @@ export default function ShipCustomizeScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ship Name (Optional)</Text>
+          <Text style={styles.sectionTitle}>Ship Name</Text>
           <TextInput
-            style={styles.nameInput}
-            placeholder="Enter ship name"
+            style={[
+              styles.nameInput,
+              name.length > 0 && !isValidName && styles.nameInputError,
+            ]}
+            placeholder="Enter ship name (3-32 characters)"
             placeholderTextColor={Colors.textDim}
             value={name}
             onChangeText={setName}
             maxLength={32}
           />
+          {name.length > 0 && !isValidName && (
+            <Text style={styles.nameError}>
+              Ship name must be 3-32 characters
+            </Text>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -363,6 +372,14 @@ const styles = StyleSheet.create({
     color: Colors.text,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  nameInputError: {
+    borderColor: Colors.danger,
+  },
+  nameError: {
+    color: Colors.danger,
+    fontSize: 12,
+    marginTop: 6,
   },
   helperText: {
     fontSize: 12,
