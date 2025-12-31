@@ -302,8 +302,8 @@ function PanelLine({ x1, y1, x2, y2, color }: {
 }
 
 /**
- * Scout - Fast recon vessel, angular stealth design
- * Single large main engine
+ * Scout - Sleek interceptor/recon craft
+ * Pointed nose, swept wings, single rear engine
  */
 function ScoutShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.scout;
@@ -317,9 +317,9 @@ function ScoutShip({ colors, roll, pitch, throttle, size }: {
   const rollAngle = roll * 35;
   const cx = 50 * s;
 
-  // Engine position - centered, at bottom of hull
+  // Engine position
   const engineX = 50 * s;
-  const engineY = (82 + pY * 6) * s;
+  const engineY = (85 + pY * 6) * s;
 
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
@@ -331,87 +331,115 @@ function ScoutShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Engine exhaust - behind ship */}
+      {/* Engine exhaust */}
       <EngineExhaust cx={engineX} cy={engineY} throttle={throttle} scale={s * 1.2} />
 
-      {/* Main hull - angular wedge */}
-      <Polygon
-        points={`
-          ${50 * s},${(10 - pY * 12) * s}
-          ${(80 + pY * 5) * s},${(50 + pY * 3) * s}
-          ${(70 + pY * 4) * s},${(80 + pY * 6) * s}
-          ${(30 - pY * 4) * s},${(80 + pY * 6) * s}
-          ${(20 - pY * 5) * s},${(50 + pY * 3) * s}
+      {/* Main fuselage - sleek pointed body */}
+      <Path
+        d={`
+          M ${50 * s} ${(5 - pY * 12) * s}
+          C ${55 * s} ${(15 - pY * 10) * s}, ${60 * s} ${(25 - pY * 8) * s}, ${62 * s} ${(40 + pY * 2) * s}
+          L ${65 * s} ${(70 + pY * 5) * s}
+          C ${63 * s} ${(78 + pY * 6) * s}, ${55 * s} ${(82 + pY * 6) * s}, ${50 * s} ${(82 + pY * 6) * s}
+          C ${45 * s} ${(82 + pY * 6) * s}, ${37 * s} ${(78 + pY * 6) * s}, ${35 * s} ${(70 + pY * 5) * s}
+          L ${38 * s} ${(40 + pY * 2) * s}
+          C ${40 * s} ${(25 - pY * 8) * s}, ${45 * s} ${(15 - pY * 10) * s}, ${50 * s} ${(5 - pY * 12) * s}
+          Z
         `}
         fill="url(#scoutHull)"
         stroke={colors.edge}
         strokeWidth={1}
       />
 
-      {/* Armored plates */}
-      <Polygon
-        points={`
-          ${50 * s},${(18 - pY * 10) * s}
-          ${(68 + pY * 4) * s},${(45 + pY * 2) * s}
-          ${50 * s},${58 * s}
-          ${(32 - pY * 4) * s},${(45 + pY * 2) * s}
+      {/* Left swept wing */}
+      <Path
+        d={`
+          M ${38 * s} ${(45 + pY * 2) * s}
+          L ${10 * s} ${(60 + pY * 4) * s}
+          L ${8 * s} ${(68 + pY * 5) * s}
+          L ${15 * s} ${(72 + pY * 5) * s}
+          L ${35 * s} ${(65 + pY * 4) * s}
+          Z
         `}
-        fill={colors.plate}
-        stroke={colors.panel}
+        fill={colors.hull}
+        stroke={colors.plate}
         strokeWidth={0.5}
       />
 
-      {/* Panel lines */}
-      <PanelLine x1={50*s} y1={(25-pY*8)*s} x2={(65+pY*3)*s} y2={(42+pY*2)*s} color={colors.panel} />
-      <PanelLine x1={50*s} y1={(25-pY*8)*s} x2={(35-pY*3)*s} y2={(42+pY*2)*s} color={colors.panel} />
-      <PanelLine x1={50*s} y1={55*s} x2={(60+pY*3)*s} y2={(70+pY*4)*s} color={colors.panel} />
-      <PanelLine x1={50*s} y1={55*s} x2={(40-pY*3)*s} y2={(70+pY*4)*s} color={colors.panel} />
-
-      {/* Cockpit viewport */}
-      <Polygon
-        points={`
-          ${50 * s},${(28 - pY * 7) * s}
-          ${(58 + pY * 2) * s},${(38 - pY * 4) * s}
-          ${(58 + pY * 2) * s},${(45 - pY * 3) * s}
-          ${50 * s},${50 * s}
-          ${(42 - pY * 2) * s},${(45 - pY * 3) * s}
-          ${(42 - pY * 2) * s},${(38 - pY * 4) * s}
+      {/* Right swept wing */}
+      <Path
+        d={`
+          M ${62 * s} ${(45 + pY * 2) * s}
+          L ${90 * s} ${(60 + pY * 4) * s}
+          L ${92 * s} ${(68 + pY * 5) * s}
+          L ${85 * s} ${(72 + pY * 5) * s}
+          L ${65 * s} ${(65 + pY * 4) * s}
+          Z
         `}
-        fill={colors.panel}
+        fill={colors.hull}
+        stroke={colors.plate}
+        strokeWidth={0.5}
+      />
+
+      {/* Cockpit canopy */}
+      <Path
+        d={`
+          M ${50 * s} ${(15 - pY * 10) * s}
+          C ${56 * s} ${(20 - pY * 8) * s}, ${58 * s} ${(30 - pY * 6) * s}, ${57 * s} ${(42 + pY) * s}
+          L ${50 * s} ${(48 + pY * 2) * s}
+          L ${43 * s} ${(42 + pY) * s}
+          C ${42 * s} ${(30 - pY * 6) * s}, ${44 * s} ${(20 - pY * 8) * s}, ${50 * s} ${(15 - pY * 10) * s}
+          Z
+        `}
+        fill="#1a3a4a"
         stroke={colors.accent}
         strokeWidth={1}
-      />
-      {/* Viewport glass */}
-      <Polygon
-        points={`
-          ${50 * s},${(32 - pY * 6) * s}
-          ${(54 + pY * 1) * s},${(38 - pY * 4) * s}
-          ${50 * s},${44 * s}
-          ${(46 - pY * 1) * s},${(38 - pY * 4) * s}
-        `}
-        fill="#1a4455"
-        stroke={colors.accent}
-        strokeWidth={0.5}
         opacity={0.9}
       />
 
-      {/* Main engine housing - large and prominent */}
-      <Rect
-        x={(38) * s} y={(70 + pY * 5) * s}
-        width={24 * s} height={12 * s}
+      {/* Cockpit frame */}
+      <Line x1={50*s} y1={(18-pY*9)*s} x2={50*s} y2={(45+pY)*s} stroke={colors.accent} strokeWidth={0.5} opacity={0.6} />
+
+      {/* Panel lines */}
+      <PanelLine x1={42*s} y1={(35-pY*5)*s} x2={38*s} y2={(60+pY*3)*s} color={colors.panel} />
+      <PanelLine x1={58*s} y1={(35-pY*5)*s} x2={62*s} y2={(60+pY*3)*s} color={colors.panel} />
+
+      {/* Engine housing - conical thruster mount */}
+      <Path
+        d={`
+          M ${40 * s} ${(68 + pY * 5) * s}
+          L ${38 * s} ${(82 + pY * 6) * s}
+          L ${62 * s} ${(82 + pY * 6) * s}
+          L ${60 * s} ${(68 + pY * 5) * s}
+          Z
+        `}
         fill={colors.panel}
         stroke={colors.hull}
         strokeWidth={1}
       />
-      {/* Engine nozzle */}
-      <EngineNozzle cx={engineX} cy={engineY} width={18} height={10} scale={s} />
+
+      {/* Engine nozzle cone */}
+      <Ellipse
+        cx={engineX}
+        cy={(80 + pY * 6) * s}
+        rx={10 * s}
+        ry={4 * s}
+        fill={colors.panel}
+        stroke={colors.hull}
+        strokeWidth={0.5}
+      />
+      <EngineNozzle cx={engineX} cy={engineY} width={16} height={10} scale={s} />
+
+      {/* Wingtip lights */}
+      <Circle cx={9*s} cy={(64+pY*4)*s} r={2*s} fill={colors.accent} opacity={0.8} />
+      <Circle cx={91*s} cy={(64+pY*4)*s} r={2*s} fill={colors.accent} opacity={0.8} />
     </G>
   );
 }
 
 /**
- * Fighter - Heavy combat vessel, brutal angular design
- * Twin engines
+ * Fighter - Heavy combat spacecraft with twin engines
+ * Aggressive nose, weapon pylons, armored cockpit
  */
 function FighterShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.fighter;
@@ -426,9 +454,9 @@ function FighterShip({ colors, roll, pitch, throttle, size }: {
   const cx = 50 * s;
 
   // Twin engine positions
-  const leftEngineX = 35 * s;
-  const rightEngineX = 65 * s;
-  const engineY = (86 + pY * 6) * s;
+  const leftEngineX = 30 * s;
+  const rightEngineX = 70 * s;
+  const engineY = (88 + pY * 6) * s;
 
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
@@ -440,100 +468,131 @@ function FighterShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Twin engine exhausts - behind ship */}
+      {/* Twin engine exhausts */}
       <EngineExhaust cx={leftEngineX} cy={engineY} throttle={throttle} scale={s * 1.1} />
       <EngineExhaust cx={rightEngineX} cy={engineY} throttle={throttle} scale={s * 1.1} />
 
-      {/* Main hull - aggressive angular */}
-      <Polygon
-        points={`
-          ${50 * s},${(8 - pY * 12) * s}
-          ${(78 + pY * 6) * s},${(40 + pY * 2) * s}
-          ${(85 + pY * 7) * s},${(60 + pY * 4) * s}
-          ${(72 + pY * 5) * s},${(82 + pY * 6) * s}
-          ${(28 - pY * 5) * s},${(82 + pY * 6) * s}
-          ${(15 - pY * 7) * s},${(60 + pY * 4) * s}
-          ${(22 - pY * 6) * s},${(40 + pY * 2) * s}
+      {/* Main fuselage - aggressive pointed nose */}
+      <Path
+        d={`
+          M ${50 * s} ${(5 - pY * 12) * s}
+          L ${58 * s} ${(20 - pY * 9) * s}
+          L ${60 * s} ${(35 + pY) * s}
+          L ${55 * s} ${(55 + pY * 3) * s}
+          L ${45 * s} ${(55 + pY * 3) * s}
+          L ${40 * s} ${(35 + pY) * s}
+          L ${42 * s} ${(20 - pY * 9) * s}
+          Z
         `}
         fill="url(#fighterHull)"
         stroke={colors.edge}
         strokeWidth={1.5}
       />
 
-      {/* Wing weapon pylons */}
-      <Polygon
-        points={`
-          ${(15 - pY * 7) * s},${(60 + pY * 4) * s}
-          ${(5) * s},${(72 + pY * 5) * s}
-          ${(8) * s},${(78 + pY * 6) * s}
-          ${(28 - pY * 5) * s},${(75 + pY * 5) * s}
+      {/* Left engine nacelle - cylindrical pod */}
+      <Path
+        d={`
+          M ${22 * s} ${(40 + pY * 2) * s}
+          C ${18 * s} ${(42 + pY * 2) * s}, ${18 * s} ${(80 + pY * 6) * s}, ${22 * s} ${(85 + pY * 6) * s}
+          L ${38 * s} ${(85 + pY * 6) * s}
+          C ${42 * s} ${(80 + pY * 6) * s}, ${42 * s} ${(42 + pY * 2) * s}, ${38 * s} ${(40 + pY * 2) * s}
+          Z
         `}
         fill={colors.hull}
-        stroke={colors.plate}
-        strokeWidth={0.5}
+        stroke={colors.edge}
+        strokeWidth={1}
       />
-      <Polygon
-        points={`
-          ${(85 + pY * 7) * s},${(60 + pY * 4) * s}
-          ${(95) * s},${(72 + pY * 5) * s}
-          ${(92) * s},${(78 + pY * 6) * s}
-          ${(72 + pY * 5) * s},${(75 + pY * 5) * s}
+
+      {/* Right engine nacelle - cylindrical pod */}
+      <Path
+        d={`
+          M ${62 * s} ${(40 + pY * 2) * s}
+          C ${58 * s} ${(42 + pY * 2) * s}, ${58 * s} ${(80 + pY * 6) * s}, ${62 * s} ${(85 + pY * 6) * s}
+          L ${78 * s} ${(85 + pY * 6) * s}
+          C ${82 * s} ${(80 + pY * 6) * s}, ${82 * s} ${(42 + pY * 2) * s}, ${78 * s} ${(40 + pY * 2) * s}
+          Z
         `}
         fill={colors.hull}
-        stroke={colors.plate}
-        strokeWidth={0.5}
+        stroke={colors.edge}
+        strokeWidth={1}
       />
 
-      {/* Weapon hardpoints */}
-      <Rect x={3*s} y={(70+pY*5)*s} width={6*s} height={10*s} fill={colors.panel} stroke={colors.accent} strokeWidth={0.5} />
-      <Rect x={91*s} y={(70+pY*5)*s} width={6*s} height={10*s} fill={colors.panel} stroke={colors.accent} strokeWidth={0.5} />
+      {/* Wing struts connecting nacelles to fuselage */}
+      <Rect x={38*s} y={(45+pY*2)*s} width={7*s} height={8*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} />
+      <Rect x={55*s} y={(45+pY*2)*s} width={7*s} height={8*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} />
 
-      {/* Center armor plate */}
-      <Polygon
-        points={`
-          ${50 * s},${(20 - pY * 10) * s}
-          ${(68 + pY * 4) * s},${(42 + pY * 2) * s}
-          ${(65 + pY * 4) * s},${(65 + pY * 4) * s}
-          ${(35 - pY * 4) * s},${(65 + pY * 4) * s}
-          ${(32 - pY * 4) * s},${(42 + pY * 2) * s}
+      {/* Weapon pylons under nacelles */}
+      <Path
+        d={`
+          M ${20 * s} ${(55 + pY * 3) * s}
+          L ${12 * s} ${(62 + pY * 4) * s}
+          L ${12 * s} ${(75 + pY * 5) * s}
+          L ${18 * s} ${(75 + pY * 5) * s}
+          L ${22 * s} ${(60 + pY * 4) * s}
+          Z
         `}
-        fill={colors.plate}
-        stroke={colors.panel}
+        fill={colors.panel}
+        stroke={colors.accent}
+        strokeWidth={0.5}
+      />
+      <Path
+        d={`
+          M ${80 * s} ${(55 + pY * 3) * s}
+          L ${88 * s} ${(62 + pY * 4) * s}
+          L ${88 * s} ${(75 + pY * 5) * s}
+          L ${82 * s} ${(75 + pY * 5) * s}
+          L ${78 * s} ${(60 + pY * 4) * s}
+          Z
+        `}
+        fill={colors.panel}
+        stroke={colors.accent}
         strokeWidth={0.5}
       />
 
-      {/* Panel lines */}
-      <PanelLine x1={50*s} y1={(30-pY*8)*s} x2={(62+pY*3)*s} y2={(50+pY*2)*s} color={colors.panel} />
-      <PanelLine x1={50*s} y1={(30-pY*8)*s} x2={(38-pY*3)*s} y2={(50+pY*2)*s} color={colors.panel} />
+      {/* Missile hardpoints */}
+      <Rect x={10*s} y={(68+pY*5)*s} width={4*s} height={8*s} fill={colors.accent} stroke={colors.panel} strokeWidth={0.5} rx={1*s} />
+      <Rect x={86*s} y={(68+pY*5)*s} width={4*s} height={8*s} fill={colors.accent} stroke={colors.panel} strokeWidth={0.5} rx={1*s} />
 
-      {/* Cockpit - armored canopy */}
-      <Polygon
-        points={`
-          ${50 * s},${(25 - pY * 8) * s}
-          ${(60 + pY * 2) * s},${(35 - pY * 5) * s}
-          ${(58 + pY * 2) * s},${(48 - pY * 3) * s}
-          ${(42 - pY * 2) * s},${(48 - pY * 3) * s}
-          ${(40 - pY * 2) * s},${(35 - pY * 5) * s}
+      {/* Cockpit - armored bubble canopy */}
+      <Path
+        d={`
+          M ${50 * s} ${(12 - pY * 10) * s}
+          C ${56 * s} ${(14 - pY * 9) * s}, ${58 * s} ${(22 - pY * 7) * s}, ${57 * s} ${(32 + pY) * s}
+          C ${56 * s} ${(38 + pY * 2) * s}, ${54 * s} ${(42 + pY * 2) * s}, ${50 * s} ${(44 + pY * 2) * s}
+          C ${46 * s} ${(42 + pY * 2) * s}, ${44 * s} ${(38 + pY * 2) * s}, ${43 * s} ${(32 + pY) * s}
+          C ${42 * s} ${(22 - pY * 7) * s}, ${44 * s} ${(14 - pY * 9) * s}, ${50 * s} ${(12 - pY * 10) * s}
+          Z
         `}
         fill="#1a1a22"
         stroke={colors.accent}
         strokeWidth={1}
       />
 
-      {/* Left engine nacelle - large and prominent */}
-      <Rect x={24*s} y={(70+pY*5)*s} width={22*s} height={16*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
-      <EngineNozzle cx={leftEngineX} cy={engineY} width={16} height={10} scale={s} />
+      {/* Cockpit HUD frame */}
+      <Line x1={50*s} y1={(15-pY*9)*s} x2={50*s} y2={(42+pY*2)*s} stroke={colors.accent} strokeWidth={0.5} opacity={0.5} />
+      <Line x1={44*s} y1={(28-pY*6)*s} x2={56*s} y2={(28-pY*6)*s} stroke={colors.accent} strokeWidth={0.5} opacity={0.5} />
 
-      {/* Right engine nacelle - large and prominent */}
-      <Rect x={54*s} y={(70+pY*5)*s} width={22*s} height={16*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
-      <EngineNozzle cx={rightEngineX} cy={engineY} width={16} height={10} scale={s} />
+      {/* Panel lines on fuselage */}
+      <PanelLine x1={45*s} y1={(25-pY*7)*s} x2={42*s} y2={(50+pY*2)*s} color={colors.panel} />
+      <PanelLine x1={55*s} y1={(25-pY*7)*s} x2={58*s} y2={(50+pY*2)*s} color={colors.panel} />
+
+      {/* Engine nozzle cones */}
+      <Ellipse cx={leftEngineX} cy={(82+pY*6)*s} rx={8*s} ry={3*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      <EngineNozzle cx={leftEngineX} cy={engineY} width={14} height={10} scale={s} />
+
+      <Ellipse cx={rightEngineX} cy={(82+pY*6)*s} rx={8*s} ry={3*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      <EngineNozzle cx={rightEngineX} cy={engineY} width={14} height={10} scale={s} />
+
+      {/* Running lights */}
+      <Circle cx={22*s} cy={(42+pY*2)*s} r={2*s} fill={colors.accent} opacity={0.9} />
+      <Circle cx={78*s} cy={(42+pY*2)*s} r={2*s} fill={colors.accent} opacity={0.9} />
     </G>
   );
 }
 
 /**
- * Trader - Industrial cargo hauler, blocky utilitarian
- * Triple engine array
+ * Trader - Heavy cargo freighter
+ * Bulky hull, cargo pods, triple engine array
  */
 function TraderShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.trader;
@@ -548,10 +607,10 @@ function TraderShip({ colors, roll, pitch, throttle, size }: {
   const cx = 50 * s;
 
   // Triple engine positions
-  const leftEngineX = 28 * s;
+  const leftEngineX = 25 * s;
   const centerEngineX = 50 * s;
-  const rightEngineX = 72 * s;
-  const engineY = (90 + pY * 5) * s;
+  const rightEngineX = 75 * s;
+  const engineY = (92 + pY * 5) * s;
 
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
@@ -563,74 +622,112 @@ function TraderShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Triple engine exhausts - behind ship */}
+      {/* Triple engine exhausts */}
       <EngineExhaust cx={leftEngineX} cy={engineY} throttle={throttle} scale={s * 0.9} wide />
       <EngineExhaust cx={centerEngineX} cy={engineY} throttle={throttle} scale={s * 1.1} wide />
       <EngineExhaust cx={rightEngineX} cy={engineY} throttle={throttle} scale={s * 0.9} wide />
 
-      {/* Main cargo hull - blocky industrial */}
-      <Polygon
-        points={`
-          ${(18 - pY * 4) * s},${(18 - pY * 8) * s}
-          ${(82 + pY * 4) * s},${(18 - pY * 8) * s}
-          ${(85 + pY * 5) * s},${(75 + pY * 6) * s}
-          ${(80 + pY * 4) * s},${(85 + pY * 6) * s}
-          ${(20 - pY * 4) * s},${(85 + pY * 6) * s}
-          ${(15 - pY * 5) * s},${(75 + pY * 6) * s}
+      {/* Main hull - rounded freighter body */}
+      <Path
+        d={`
+          M ${30 * s} ${(15 - pY * 9) * s}
+          L ${70 * s} ${(15 - pY * 9) * s}
+          C ${85 * s} ${(18 - pY * 8) * s}, ${88 * s} ${(35 + pY) * s}, ${88 * s} ${(50 + pY * 3) * s}
+          L ${88 * s} ${(75 + pY * 5) * s}
+          C ${88 * s} ${(82 + pY * 6) * s}, ${82 * s} ${(88 + pY * 6) * s}, ${75 * s} ${(88 + pY * 6) * s}
+          L ${25 * s} ${(88 + pY * 6) * s}
+          C ${18 * s} ${(88 + pY * 6) * s}, ${12 * s} ${(82 + pY * 6) * s}, ${12 * s} ${(75 + pY * 5) * s}
+          L ${12 * s} ${(50 + pY * 3) * s}
+          C ${12 * s} ${(35 + pY) * s}, ${15 * s} ${(18 - pY * 8) * s}, ${30 * s} ${(15 - pY * 9) * s}
+          Z
         `}
         fill="url(#traderHull)"
         stroke={colors.edge}
         strokeWidth={1.5}
       />
 
-      {/* Cargo container segments */}
-      <Rect x={(22-pY*3)*s} y={(28-pY*6)*s} width={(56+pY*6)*s} height={18*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} />
-      <Rect x={(22-pY*2)*s} y={(50-pY*3)*s} width={(56+pY*4)*s} height={18*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} />
-
-      {/* Container dividers */}
-      <Line x1={40*s} y1={(28-pY*6)*s} x2={40*s} y2={(46-pY*4)*s} stroke={colors.panel} strokeWidth={1} />
-      <Line x1={60*s} y1={(28-pY*6)*s} x2={60*s} y2={(46-pY*4)*s} stroke={colors.panel} strokeWidth={1} />
-      <Line x1={40*s} y1={(50-pY*3)*s} x2={40*s} y2={(68-pY*1)*s} stroke={colors.panel} strokeWidth={1} />
-      <Line x1={60*s} y1={(50-pY*3)*s} x2={60*s} y2={(68-pY*1)*s} stroke={colors.panel} strokeWidth={1} />
-
-      {/* Bridge module */}
-      <Polygon
-        points={`
-          ${(35 - pY * 2) * s},${(8 - pY * 10) * s}
-          ${(65 + pY * 2) * s},${(8 - pY * 10) * s}
-          ${(68 + pY * 3) * s},${(22 - pY * 7) * s}
-          ${(32 - pY * 3) * s},${(22 - pY * 7) * s}
+      {/* Cockpit/bridge module - raised section at front */}
+      <Path
+        d={`
+          M ${35 * s} ${(8 - pY * 11) * s}
+          L ${65 * s} ${(8 - pY * 11) * s}
+          C ${72 * s} ${(10 - pY * 10) * s}, ${75 * s} ${(15 - pY * 9) * s}, ${72 * s} ${(22 - pY * 7) * s}
+          L ${28 * s} ${(22 - pY * 7) * s}
+          C ${25 * s} ${(15 - pY * 9) * s}, ${28 * s} ${(10 - pY * 10) * s}, ${35 * s} ${(8 - pY * 11) * s}
+          Z
         `}
         fill={colors.hull}
         stroke={colors.plate}
         strokeWidth={0.5}
       />
 
-      {/* Bridge viewport */}
-      <Rect x={(40-pY)*s} y={(10-pY*9)*s} width={(20+pY*2)*s} height={8*s} fill="#1a2a22" stroke={colors.accent} strokeWidth={0.5} />
+      {/* Bridge windows - wraparound viewport */}
+      <Path
+        d={`
+          M ${38 * s} ${(10 - pY * 10) * s}
+          L ${62 * s} ${(10 - pY * 10) * s}
+          C ${66 * s} ${(11 - pY * 10) * s}, ${68 * s} ${(14 - pY * 9) * s}, ${66 * s} ${(18 - pY * 8) * s}
+          L ${34 * s} ${(18 - pY * 8) * s}
+          C ${32 * s} ${(14 - pY * 9) * s}, ${34 * s} ${(11 - pY * 10) * s}, ${38 * s} ${(10 - pY * 10) * s}
+          Z
+        `}
+        fill="#1a2a22"
+        stroke={colors.accent}
+        strokeWidth={0.5}
+      />
 
-      {/* Hull reinforcement struts */}
-      <Line x1={(18-pY*4)*s} y1={(35-pY*5)*s} x2={(18-pY*4)*s} y2={(70+pY*4)*s} stroke={colors.plate} strokeWidth={2} />
-      <Line x1={(82+pY*4)*s} y1={(35-pY*5)*s} x2={(82+pY*4)*s} y2={(70+pY*4)*s} stroke={colors.plate} strokeWidth={2} />
+      {/* Cargo bay doors - upper */}
+      <Rect x={20*s} y={(28-pY*6)*s} width={26*s} height={20*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} rx={2*s} />
+      <Rect x={54*s} y={(28-pY*6)*s} width={26*s} height={20*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} rx={2*s} />
 
-      {/* Engine housing - large triple-engine bay */}
-      <Rect x={(16-pY*3)*s} y={(75+pY*5)*s} width={(68+pY*6)*s} height={15*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
+      {/* Cargo bay doors - lower */}
+      <Rect x={20*s} y={(52-pY*3)*s} width={26*s} height={18*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} rx={2*s} />
+      <Rect x={54*s} y={(52-pY*3)*s} width={26*s} height={18*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} rx={2*s} />
+
+      {/* Cargo door handles/latches */}
+      <Line x1={33*s} y1={(32-pY*5)*s} x2={33*s} y2={(44-pY*4)*s} stroke={colors.accent} strokeWidth={1} />
+      <Line x1={67*s} y1={(32-pY*5)*s} x2={67*s} y2={(44-pY*4)*s} stroke={colors.accent} strokeWidth={1} />
+      <Line x1={33*s} y1={(55-pY*2)*s} x2={33*s} y2={(66-pY*1)*s} stroke={colors.accent} strokeWidth={1} />
+      <Line x1={67*s} y1={(55-pY*2)*s} x2={67*s} y2={(66-pY*1)*s} stroke={colors.accent} strokeWidth={1} />
+
+      {/* Side hull details */}
+      <PanelLine x1={15*s} y1={(35+pY)*s} x2={15*s} y2={(70+pY*4)*s} color={colors.panel} />
+      <PanelLine x1={85*s} y1={(35+pY)*s} x2={85*s} y2={(70+pY*4)*s} color={colors.panel} />
+
+      {/* Engine section - industrial thruster array */}
+      <Path
+        d={`
+          M ${15 * s} ${(75 + pY * 5) * s}
+          L ${85 * s} ${(75 + pY * 5) * s}
+          L ${85 * s} ${(88 + pY * 6) * s}
+          L ${15 * s} ${(88 + pY * 6) * s}
+          Z
+        `}
+        fill={colors.panel}
+        stroke={colors.hull}
+        strokeWidth={1}
+      />
+
+      {/* Engine cones/bells */}
+      <Ellipse cx={leftEngineX} cy={(85+pY*5)*s} rx={10*s} ry={4*s} fill={colors.hull} stroke={colors.panel} strokeWidth={0.5} />
+      <Ellipse cx={centerEngineX} cy={(85+pY*5)*s} rx={12*s} ry={5*s} fill={colors.hull} stroke={colors.panel} strokeWidth={0.5} />
+      <Ellipse cx={rightEngineX} cy={(85+pY*5)*s} rx={10*s} ry={4*s} fill={colors.hull} stroke={colors.panel} strokeWidth={0.5} />
 
       {/* Engine nozzles */}
       <EngineNozzle cx={leftEngineX} cy={engineY} width={14} height={10} scale={s} />
       <EngineNozzle cx={centerEngineX} cy={engineY} width={18} height={12} scale={s} />
       <EngineNozzle cx={rightEngineX} cy={engineY} width={14} height={10} scale={s} />
 
-      {/* Engine dividers */}
-      <Line x1={38*s} y1={(76+pY*5)*s} x2={38*s} y2={(89+pY*5)*s} stroke={colors.hull} strokeWidth={2} />
-      <Line x1={62*s} y1={(76+pY*5)*s} x2={62*s} y2={(89+pY*5)*s} stroke={colors.hull} strokeWidth={2} />
+      {/* Running lights */}
+      <Circle cx={12*s} cy={(50+pY*3)*s} r={2*s} fill={colors.accent} opacity={0.8} />
+      <Circle cx={88*s} cy={(50+pY*3)*s} r={2*s} fill={colors.accent} opacity={0.8} />
     </G>
   );
 }
 
 /**
- * Explorer - Long-range science vessel, functional asymmetric
- * Single large main engine + maneuvering thrusters
+ * Explorer - Long-range science/exploration vessel
+ * Sensor dish, elongated hull, large main engine
  */
 function ExplorerShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.explorer;
@@ -646,7 +743,7 @@ function ExplorerShip({ colors, roll, pitch, throttle, size }: {
 
   // Main engine position
   const engineX = 50 * s;
-  const engineY = (88 + pY * 6) * s;
+  const engineY = (90 + pY * 6) * s;
 
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
@@ -658,133 +755,161 @@ function ExplorerShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Main engine exhaust - behind ship */}
+      {/* Main engine exhaust */}
       <EngineExhaust cx={engineX} cy={engineY} throttle={throttle} scale={s * 1.3} />
 
-      {/* Main hull - elongated */}
-      <Polygon
-        points={`
-          ${50 * s},${(5 - pY * 12) * s}
-          ${(72 + pY * 5) * s},${(40 + pY * 2) * s}
-          ${(68 + pY * 5) * s},${(82 + pY * 6) * s}
-          ${(32 - pY * 5) * s},${(82 + pY * 6) * s}
-          ${(28 - pY * 5) * s},${(40 + pY * 2) * s}
+      {/* Main hull - elongated saucer-like forward section */}
+      <Path
+        d={`
+          M ${50 * s} ${(8 - pY * 12) * s}
+          C ${70 * s} ${(10 - pY * 11) * s}, ${78 * s} ${(20 - pY * 8) * s}, ${75 * s} ${(35 + pY) * s}
+          L ${70 * s} ${(50 + pY * 3) * s}
+          L ${65 * s} ${(55 + pY * 3) * s}
+          L ${35 * s} ${(55 + pY * 3) * s}
+          L ${30 * s} ${(50 + pY * 3) * s}
+          L ${25 * s} ${(35 + pY) * s}
+          C ${22 * s} ${(20 - pY * 8) * s}, ${30 * s} ${(10 - pY * 11) * s}, ${50 * s} ${(8 - pY * 12) * s}
+          Z
         `}
         fill="url(#explorerHull)"
         stroke={colors.edge}
         strokeWidth={1}
       />
 
-      {/* Sensor dish assembly */}
-      <Circle
-        cx={(78 + pY * 6) * s}
-        cy={(25 - pY * 8) * s}
-        r={14 * s}
-        fill={colors.plate}
-        stroke={colors.accent}
+      {/* Engineering section - rear hull with engines */}
+      <Path
+        d={`
+          M ${38 * s} ${(52 + pY * 3) * s}
+          L ${62 * s} ${(52 + pY * 3) * s}
+          L ${60 * s} ${(85 + pY * 6) * s}
+          L ${40 * s} ${(85 + pY * 6) * s}
+          Z
+        `}
+        fill={colors.hull}
+        stroke={colors.edge}
         strokeWidth={1}
       />
-      <Circle
-        cx={(78 + pY * 6) * s}
-        cy={(25 - pY * 8) * s}
-        r={10 * s}
-        fill={colors.hull}
-        stroke={colors.panel}
-        strokeWidth={0.5}
-      />
-      <Circle
-        cx={(78 + pY * 6) * s}
-        cy={(25 - pY * 8) * s}
-        r={4 * s}
-        fill={colors.accent}
-        opacity={0.8}
-      />
-      {/* Dish arm */}
-      <Rect
-        x={(62 + pY * 4) * s}
-        y={(32 - pY * 5) * s}
-        width={14 * s}
-        height={4 * s}
-        fill={colors.hull}
-        stroke={colors.panel}
-        strokeWidth={0.5}
-      />
 
-      {/* Science module */}
-      <Rect
-        x={(38 - pY * 2) * s}
-        y={(22 - pY * 9) * s}
-        width={(24 + pY * 4) * s}
-        height={20 * s}
-        fill={colors.plate}
-        stroke={colors.panel}
-        strokeWidth={0.5}
-      />
+      {/* Sensor dish on boom - starboard side */}
+      <Line x1={70*s} y1={(28+pY)*s} x2={88*s} y2={(20-pY*8)*s} stroke={colors.plate} strokeWidth={2} />
+      <Circle cx={(90)*s} cy={(18-pY*9)*s} r={12*s} fill={colors.plate} stroke={colors.accent} strokeWidth={1} />
+      <Circle cx={(90)*s} cy={(18-pY*9)*s} r={8*s} fill={colors.hull} stroke={colors.panel} strokeWidth={0.5} />
+      <Circle cx={(90)*s} cy={(18-pY*9)*s} r={3*s} fill={colors.accent} opacity={0.9} />
 
-      {/* Sensor arrays */}
-      {[0, 1, 2, 3].map(i => (
-        <Rect
-          key={i}
-          x={(42 + i * 5) * s}
-          y={(15 - pY * 10) * s}
-          width={3 * s}
-          height={6 * s}
-          fill={colors.accent}
-          opacity={0.8}
-        />
-      ))}
-
-      {/* Wing struts */}
-      <Polygon
-        points={`
-          ${(28 - pY * 5) * s},${(45 + pY * 2) * s}
-          ${(10) * s},${(65 + pY * 4) * s}
-          ${(15) * s},${(70 + pY * 4) * s}
-          ${(32 - pY * 4) * s},${(55 + pY * 3) * s}
+      {/* Science pod - port side */}
+      <Path
+        d={`
+          M ${25 * s} ${(25 + pY) * s}
+          L ${10 * s} ${(30 + pY) * s}
+          C ${5 * s} ${(32 + pY) * s}, ${5 * s} ${(45 + pY * 2) * s}, ${10 * s} ${(48 + pY * 2) * s}
+          L ${28 * s} ${(42 + pY * 2) * s}
+          Z
         `}
         fill={colors.hull}
         stroke={colors.plate}
         strokeWidth={0.5}
       />
-      <Polygon
-        points={`
-          ${(72 + pY * 5) * s},${(45 + pY * 2) * s}
-          ${(90) * s},${(65 + pY * 4) * s}
-          ${(85) * s},${(70 + pY * 4) * s}
-          ${(68 + pY * 4) * s},${(55 + pY * 3) * s}
-        `}
-        fill={colors.hull}
-        stroke={colors.plate}
-        strokeWidth={0.5}
-      />
+      {/* Science pod window */}
+      <Ellipse cx={12*s} cy={(38+pY)*s} rx={4*s} ry={6*s} fill="#1a1a2a" stroke={colors.accent} strokeWidth={0.5} />
 
-      {/* Cockpit */}
-      <Polygon
-        points={`
-          ${50 * s},${(18 - pY * 10) * s}
-          ${(58 + pY * 2) * s},${(28 - pY * 7) * s}
-          ${(55 + pY * 1) * s},${(40 - pY * 4) * s}
-          ${(45 - pY * 1) * s},${(40 - pY * 4) * s}
-          ${(42 - pY * 2) * s},${(28 - pY * 7) * s}
+      {/* Cockpit - dome canopy */}
+      <Path
+        d={`
+          M ${50 * s} ${(12 - pY * 11) * s}
+          C ${60 * s} ${(14 - pY * 10) * s}, ${65 * s} ${(22 - pY * 8) * s}, ${62 * s} ${(32 + pY) * s}
+          C ${60 * s} ${(38 + pY * 2) * s}, ${55 * s} ${(42 + pY * 2) * s}, ${50 * s} ${(42 + pY * 2) * s}
+          C ${45 * s} ${(42 + pY * 2) * s}, ${40 * s} ${(38 + pY * 2) * s}, ${38 * s} ${(32 + pY) * s}
+          C ${35 * s} ${(22 - pY * 8) * s}, ${40 * s} ${(14 - pY * 10) * s}, ${50 * s} ${(12 - pY * 11) * s}
+          Z
         `}
         fill="#1a1a2a"
         stroke={colors.accent}
+        strokeWidth={1}
+      />
+
+      {/* Cockpit frame lines */}
+      <Line x1={50*s} y1={(14-pY*10)*s} x2={50*s} y2={(40+pY*2)*s} stroke={colors.accent} strokeWidth={0.5} opacity={0.5} />
+      <Path
+        d={`M ${42*s} ${(25-pY*6)*s} Q ${50*s} ${(22-pY*7)*s} ${58*s} ${(25-pY*6)*s}`}
+        stroke={colors.accent}
+        strokeWidth={0.5}
+        fill="none"
+        opacity={0.5}
+      />
+
+      {/* Sensor arrays on top of saucer */}
+      {[0, 1, 2].map(i => (
+        <Rect
+          key={i}
+          x={(44 + i * 6) * s}
+          y={(18 - pY * 9) * s}
+          width={3 * s}
+          height={5 * s}
+          fill={colors.accent}
+          opacity={0.8}
+          rx={1 * s}
+        />
+      ))}
+
+      {/* Warp nacelle pylons */}
+      <Path
+        d={`
+          M ${35 * s} ${(58 + pY * 3) * s}
+          L ${20 * s} ${(65 + pY * 4) * s}
+          L ${18 * s} ${(82 + pY * 6) * s}
+          L ${25 * s} ${(82 + pY * 6) * s}
+          L ${38 * s} ${(70 + pY * 5) * s}
+          Z
+        `}
+        fill={colors.hull}
+        stroke={colors.plate}
+        strokeWidth={0.5}
+      />
+      <Path
+        d={`
+          M ${65 * s} ${(58 + pY * 3) * s}
+          L ${80 * s} ${(65 + pY * 4) * s}
+          L ${82 * s} ${(82 + pY * 6) * s}
+          L ${75 * s} ${(82 + pY * 6) * s}
+          L ${62 * s} ${(70 + pY * 5) * s}
+          Z
+        `}
+        fill={colors.hull}
+        stroke={colors.plate}
         strokeWidth={0.5}
       />
 
-      {/* Panel lines */}
-      <PanelLine x1={50*s} y1={(35-pY*5)*s} x2={(65+pY*4)*s} y2={(60+pY*3)*s} color={colors.panel} />
-      <PanelLine x1={50*s} y1={(35-pY*5)*s} x2={(35-pY*4)*s} y2={(60+pY*3)*s} color={colors.panel} />
+      {/* Maneuvering thruster pods on nacelles */}
+      <Ellipse cx={20*s} cy={(78+pY*5)*s} rx={5*s} ry={3*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      <Ellipse cx={80*s} cy={(78+pY*5)*s} rx={5*s} ry={3*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
 
-      {/* Main engine housing - large and prominent */}
-      <Rect x={(34-pY*3)*s} y={(73+pY*5)*s} width={(32+pY*6)*s} height={15*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
+      {/* Panel lines */}
+      <PanelLine x1={40*s} y1={(30+pY)*s} x2={35*s} y2={(50+pY*3)*s} color={colors.panel} />
+      <PanelLine x1={60*s} y1={(30+pY)*s} x2={65*s} y2={(50+pY*3)*s} color={colors.panel} />
+
+      {/* Main engine housing - conical */}
+      <Path
+        d={`
+          M ${42 * s} ${(72 + pY * 5) * s}
+          L ${38 * s} ${(86 + pY * 6) * s}
+          L ${62 * s} ${(86 + pY * 6) * s}
+          L ${58 * s} ${(72 + pY * 5) * s}
+          Z
+        `}
+        fill={colors.panel}
+        stroke={colors.hull}
+        strokeWidth={1}
+      />
+
+      {/* Engine bell */}
+      <Ellipse cx={engineX} cy={(85+pY*6)*s} rx={10*s} ry={4*s} fill={colors.hull} stroke={colors.panel} strokeWidth={0.5} />
 
       {/* Engine nozzle */}
-      <EngineNozzle cx={engineX} cy={engineY} width={22} height={12} scale={s} />
+      <EngineNozzle cx={engineX} cy={engineY} width={18} height={12} scale={s} />
 
-      {/* Maneuvering thruster pods on wings */}
-      <Circle cx={12*s} cy={(67+pY*4)*s} r={4*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
-      <Circle cx={88*s} cy={(67+pY*4)*s} r={4*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      {/* Running lights */}
+      <Circle cx={25*s} cy={(35+pY)*s} r={2*s} fill={colors.accent} opacity={0.9} />
+      <Circle cx={75*s} cy={(35+pY)*s} r={2*s} fill={colors.accent} opacity={0.9} />
     </G>
   );
 }
