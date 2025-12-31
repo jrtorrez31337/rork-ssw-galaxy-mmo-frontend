@@ -5,7 +5,7 @@ import { useCockpitStore } from '@/stores/cockpitStore';
 import { HeaderBar } from './HeaderBar';
 import { LeftRail } from './LeftRail';
 import { AlertOverlay } from './AlertOverlay';
-import { UnifiedLCARSBar, LCARS_BAR_HEIGHT } from '@/components/lcars-bar';
+import { UnifiedLCARSBar } from '@/components/lcars-bar';
 import { FlightViewport } from '@/components/viewport/FlightViewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 import { useCommandHandler } from '@/hooks/useCommandHandler';
@@ -163,10 +163,8 @@ const styles = StyleSheet.create({
   viewport: {
     flex: 1,
     backgroundColor: tokens.colors.console.nebula,
-    position: 'relative',
   },
   contentArea: {
     flex: 1,
-    paddingBottom: LCARS_BAR_HEIGHT,
   },
 });
