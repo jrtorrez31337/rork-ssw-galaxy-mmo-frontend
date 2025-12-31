@@ -30,7 +30,7 @@ import { shipApi } from '@/api/ships';
  */
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CONTROL_BAR_HEIGHT = 130;
+const CONTROL_BAR_HEIGHT = 150;
 
 /**
  * Compact Throttle Control for LCARS bar
@@ -236,17 +236,11 @@ function YawControl() {
 }
 
 /**
- * Flight profile and exit button section
+ * Exit button section
  */
-function ProfileAndExit({ onExitFlight }: { onExitFlight?: () => void }) {
-  const profile = useFlightStore((s) => s.profile);
-  const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
-
+function ExitSection({ onExitFlight }: { onExitFlight?: () => void }) {
   return (
-    <View style={styles.profileSection}>
-      <Text style={styles.controlLabel}>MODE</Text>
-      <Text style={styles.profileName}>{profile.name.toUpperCase()}</Text>
-      {axisCouplingEnabled && <Text style={styles.couplingBadge}>ROLL→YAW</Text>}
+    <View style={styles.exitSection}>
       {onExitFlight && (
         <TouchableOpacity style={styles.exitButton} onPress={onExitFlight}>
           <Text style={styles.exitButtonText}>EXIT</Text>
@@ -294,9 +288,9 @@ function LCARSControlBar({ onExitFlight }: { onExitFlight?: () => void }) {
       {/* Divider */}
       <View style={styles.divider} />
 
-      {/* Profile + Exit */}
-      <View style={styles.controlSection}>
-        <ProfileAndExit onExitFlight={onExitFlight} />
+      {/* Exit */}
+      <View style={styles.controlSectionNarrow}>
+        <ExitSection onExitFlight={onExitFlight} />
       </View>
     </View>
   );
@@ -428,6 +422,12 @@ const styles = StyleSheet.create({
     flex: 1.3,
     alignItems: 'center',
     justifyContent: 'flex-start',
+    paddingHorizontal: 4,
+  },
+  controlSectionNarrow: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 4,
   },
   divider: {
@@ -588,32 +588,22 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.semantic.navigation,
     borderRadius: 10,
   },
-  // Profile & Exit
-  profileSection: {
+  // Exit section
+  exitSection: {
+    flex: 1,
     alignItems: 'center',
-  },
-  profileName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: tokens.colors.semantic.navigation,
-    fontFamily: tokens.typography.fontFamily.mono,
-  },
-  couplingBadge: {
-    fontSize: 8,
-    fontWeight: '600',
-    color: tokens.colors.lcars.orange,
-    marginTop: 2,
+    justifyContent: 'center',
   },
   exitButton: {
-    marginTop: 8,
     backgroundColor: tokens.colors.command.red,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 6,
   },
   exitButtonText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: tokens.colors.text.inverse,
+    letterSpacing: 1,
   },
 });
