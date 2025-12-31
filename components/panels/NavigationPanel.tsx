@@ -1,12 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Navigation, MapPin, Clock, AlertTriangle } from 'lucide-react-native';
+import { Navigation, MapPin, Clock, AlertTriangle, Rocket } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { Panel, Gauge, StatusChip, RailButton } from '@/ui/components';
 import { useBridgeState } from '@/hooks/useBridgeState';
 import { useTravelStateStore } from '@/stores/travelStateStore';
 import { useLocationStore } from '@/stores/locationStore';
 import { useCommandStore } from '@/stores/commandStore';
+import { useCockpitStore } from '@/stores/cockpitStore';
 
 /**
  * NavigationPanel - NAV Rail Content
@@ -33,6 +34,14 @@ export function NavigationPanel() {
   const dockedStation = useLocationStore((s) => s.docked.stationName);
 
   const dispatchAction = useCommandStore((s) => s.dispatchAction);
+
+  const setActiveViewport = useCockpitStore((s) => s.setActiveViewport);
+  const setPanelState = useCockpitStore((s) => s.setPanelState);
+
+  const handleEnterFlightMode = () => {
+    setPanelState('hidden');
+    setActiveViewport('flight');
+  };
 
   // Format time remaining
   const formatTime = (seconds: number): string => {
@@ -150,6 +159,21 @@ export function NavigationPanel() {
         </Panel>
       )}
 
+      {/* Flight Mode */}
+      <Panel variant="navigation" title="FLIGHT MODE" style={styles.panel}>
+        <TouchableOpacity
+          style={styles.flightModeButton}
+          onPress={handleEnterFlightMode}
+          activeOpacity={0.7}
+        >
+          <Rocket size={20} color={tokens.colors.text.primary} />
+          <Text style={styles.flightModeText}>ENTER FLIGHT MODE</Text>
+        </TouchableOpacity>
+        <Text style={styles.flightModeHint}>
+          Take direct control of your ship's flight systems
+        </Text>
+      </Panel>
+
       {/* Quick Navigation */}
       <Panel variant="navigation" title="QUICK NAV" style={styles.panel}>
         <View style={styles.quickNavGrid}>
@@ -256,5 +280,27 @@ const styles = StyleSheet.create({
     fontSize: tokens.typography.fontSize.xs,
     color: tokens.colors.text.secondary,
     textTransform: 'uppercase',
+  },
+  flightModeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing[2],
+    padding: tokens.spacing[3],
+    backgroundColor: tokens.colors.semantic.navigation,
+    borderRadius: tokens.radius.md,
+    marginBottom: tokens.spacing[2],
+  },
+  flightModeText: {
+    fontSize: tokens.typography.fontSize.sm,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.text.primary,
+    textTransform: 'uppercase',
+  },
+  flightModeHint: {
+    fontSize: tokens.typography.fontSize.xs,
+    color: tokens.colors.text.tertiary,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
