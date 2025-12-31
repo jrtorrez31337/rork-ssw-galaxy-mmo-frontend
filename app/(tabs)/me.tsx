@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Plus, Shield, LogOut, Flag } from 'lucide-react-native';
+import { User, Plus, Shield, LogOut, Flag, Settings } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { TopBar, Text, Button, CharacterCard, EmptyState, Spinner, BottomSheet, Divider, CharacterCardSkeleton } from '@/ui';
 import { tokens } from '@/ui/theme';
@@ -101,12 +101,14 @@ export default function MeTab() {
             {user?.display_name}
           </Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <LogOut size={20} color={tokens.colors.danger} />
-          <Text variant="caption" weight="semibold" color={tokens.colors.danger}>
-            Logout
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => router.push('/settings' as any)} style={styles.settingsButton}>
+            <Settings size={20} color={tokens.colors.text.secondary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <LogOut size={20} color={tokens.colors.danger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -259,10 +261,15 @@ const styles = StyleSheet.create({
   profileInfo: {
     gap: tokens.spacing[1],
   },
-  logoutButton: {
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing[2],
+    gap: tokens.spacing[3],
+  },
+  settingsButton: {
+    padding: tokens.spacing[2],
+  },
+  logoutButton: {
     padding: tokens.spacing[2],
   },
   content: {

@@ -11,6 +11,8 @@ import { FlightViewport } from '@/components/viewport/FlightViewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 import { useCommandHandler } from '@/hooks/useCommandHandler';
 import { RespawnOverlay } from '@/components/respawn/RespawnOverlay';
+import { CombatHUD, CombatResults } from '@/components/combat';
+import { useAuth } from '@/contexts/AuthContext';
 
 /**
  * CockpitShell - Persistent Bridge Frame
@@ -60,6 +62,9 @@ export function CockpitShell({ children }: CockpitShellProps) {
   const activeViewport = useCockpitStore((s) => s.activeViewport);
   const setActiveViewport = useCockpitStore((s) => s.setActiveViewport);
   const mountId = useRef<number | null>(null);
+
+  // Get player ID for combat HUD
+  const { profileId } = useAuth();
 
   // Flight system integration (per Cinematic Flight Doctrine)
   // Runs flight simulation tick and integrates with game state
@@ -146,6 +151,12 @@ export function CockpitShell({ children }: CockpitShellProps) {
 
       {/* Command Bar - Always visible */}
       <CommandBar />
+
+      {/* Combat HUD - Shows during active combat */}
+      {profileId && <CombatHUD playerId={profileId} />}
+
+      {/* Combat Results Modal - Shows after combat ends */}
+      <CombatResults />
 
       {/* Respawn Overlay - Shows when player ship is destroyed */}
       <RespawnOverlay />

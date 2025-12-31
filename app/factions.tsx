@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Flag } from 'lucide-react-native';
+import { ArrowLeft, Flag, Globe } from 'lucide-react-native';
 import { Text } from '@/ui';
 import { tokens } from '@/ui/theme';
 import FactionsList from '@/components/factions/FactionsList';
@@ -42,6 +42,13 @@ export default function FactionsScreen() {
             Galactic Factions
           </Text>
         </View>
+        <TouchableOpacity
+          style={styles.mapButton}
+          onPress={() => router.push('/galaxy-map' as any)}
+          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+        >
+          <Globe size={22} color={tokens.colors.primary.main} />
+        </TouchableOpacity>
       </View>
 
       {/* Subtitle */}
@@ -75,6 +82,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: tokens.spacing[4],
     paddingVertical: tokens.spacing[3],
     borderBottomWidth: 1,
@@ -87,13 +95,21 @@ const styles = StyleSheet.create({
     height: tokens.interaction.minTouchTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: tokens.spacing[2],
   } as ViewStyle,
 
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing[3],
+    flex: 1,
+    marginLeft: tokens.spacing[2],
+  } as ViewStyle,
+
+  mapButton: {
+    width: tokens.interaction.minTouchTarget,
+    height: tokens.interaction.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
   } as ViewStyle,
 
   subtitle: {
