@@ -17,7 +17,7 @@ import { useNPCStore } from '@/stores/npcStore';
 import { useCombatStore } from '@/stores/combatStore';
 import { npcApi } from '@/api/npc';
 import { combatApi } from '@/api/combat';
-import SectorView2D from '@/components/npc/SectorView2D';
+import { SectorView } from '@/components/sector';
 import NPCList from '@/components/npc/NPCList';
 import CombatHUD from '@/components/combat/CombatHUD';
 import CombatResults from '@/components/combat/CombatResults';
@@ -164,9 +164,9 @@ export default function SectorScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* 2D Sector View */}
+        {/* Sector View (2D or 3D based on settings) */}
         <View style={styles.section}>
-          <SectorView2D
+          <SectorView
             npcs={npcs}
             playerPosition={playerPosition}
             selectedNPCId={selectedNPC?.entity_id}

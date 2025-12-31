@@ -3,6 +3,8 @@ import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCommandStore, CommandAction } from '@/stores/commandStore';
 import { useLocationStore } from '@/stores/locationStore';
+import { useCockpitStore } from '@/stores/cockpitStore';
+import { useFlightStore } from '@/stores/flightStore';
 import { movementApi } from '@/api/movement';
 import { useAuth } from '@/contexts/AuthContext';
 import { shipApi } from '@/api/ships';
@@ -37,6 +39,11 @@ export function useCommandHandler() {
   const locationDock = useLocationStore((s) => s.dock);
   const locationUndock = useLocationStore((s) => s.undock);
   const setDisplayLocation = useLocationStore((s) => s.setDisplayLocation);
+
+  // Cockpit and flight stores for flight mode
+  const setActiveViewport = useCockpitStore((s) => s.setActiveViewport);
+  const setFlightProfile = useFlightStore((s) => s.setProfileById);
+  const setActiveShipId = useFlightStore((s) => s.setActiveShipId);
 
   // Fetch current ship
   const { data: ships } = useQuery({
@@ -144,8 +151,19 @@ export function useCommandHandler() {
         break;
 
       case 'flt:launch':
-        // Handled by FlightViewport integration
-        console.log('[CommandHandler] flt:launch - should be handled by flight system');
+        // Activate flight mode with current ship's profile
+        if (currentShip) {
+          // Set flight profile based on ship type
+          setFlightProfile(currentShip.ship_type || 'scout');
+          setActiveShipId(currentShip.id);
+          // Switch to flight viewport
+          setActiveViewport('flight');
+          setActionFeedback(true, 'Flight mode engaged');
+          console.log('[CommandHandler] flt:launch - activating flight mode for', currentShip.ship_type);
+        } else {
+          setActionFeedback(false, 'No ship available for flight');
+          console.warn('[CommandHandler] flt:launch - no ship available');
+        }
         break;
 
       default:

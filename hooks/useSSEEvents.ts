@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { sseManager } from '@/lib/sseManager';
 
-// Import stores
+// Import stores - use getState() inside callbacks to avoid re-renders
 import { useCombatStore } from '@/stores/combatStore';
 import { useLootStore } from '@/stores/lootStore';
 import { useMissionStore } from '@/stores/missionStore';
@@ -12,6 +12,19 @@ import { useShipSystemsStore } from '@/stores/shipSystemsStore';
 import { useProcgenStore } from '@/stores/procgenStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useRespawnStore } from '@/stores/respawnStore';
+
+// Helper to get stores without subscribing to changes
+const getStores = () => ({
+  combat: useCombatStore.getState(),
+  loot: useLootStore.getState(),
+  mission: useMissionStore.getState(),
+  location: useLocationStore.getState(),
+  position: usePositionStore.getState(),
+  shipSystems: useShipSystemsStore.getState(),
+  procgen: useProcgenStore.getState(),
+  notification: useNotificationStore.getState(),
+  respawn: useRespawnStore.getState(),
+});
 
 // Import types
 import type { SectorDelta, DeltaType } from '@/lib/procgen/types';
@@ -82,17 +95,6 @@ export function useSSEEvents(
 ) {
   const queryClient = useQueryClient();
 
-  // Store references
-  const combatStore = useCombatStore();
-  const lootStore = useLootStore();
-  const missionStore = useMissionStore();
-  const locationStore = useLocationStore();
-  const positionStore = usePositionStore();
-  const shipSystemsStore = useShipSystemsStore();
-  const procgenStore = useProcgenStore();
-  const notificationStore = useNotificationStore();
-  const respawnStore = useRespawnStore();
-
   // Stable callback ref to avoid re-registering listeners
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -120,7 +122,7 @@ export function useSSEEvents(
         notify('game.combat.start', data);
 
         // Initialize combat instance in store
-        combatStore.setCombatInstance({
+        getStores().combat.setCombatInstance({
           combat_id: data.combat_id,
           status: 'active',
           sector: data.sector_id || data.sector,
@@ -139,8 +141,10 @@ export function useSSEEvents(
         console.log('[SSE Events] Combat tick:', data.tick);
         notify('game.combat.tick', data);
 
+        const stores = getStores();
+
         // Update tick counter
-        combatStore.setCombatTick(data.tick);
+        stores.combat.setCombatTick(data.tick);
 
         // Process actions (damage dealt)
         (data.actions || []).forEach((action: any) => {
@@ -150,7 +154,7 @@ export function useSSEEvents(
           );
 
           if (targetParticipant) {
-            combatStore.updateParticipantHealth(
+            stores.combat.updateParticipantHealth(
               action.target_id,
               targetParticipant.hull,
               targetParticipant.shield
@@ -159,11 +163,11 @@ export function useSSEEvents(
             // Check if player ship was destroyed (hull = 0)
             if (action.target_id === playerId && targetParticipant.hull <= 0) {
               console.log('[SSE Events] Player ship destroyed in combat!');
-              const currentSector = usePositionStore.getState().currentSectorId || data.sector_id || 'Unknown';
+              const currentSector = stores.position.currentSectorId || data.sector_id || 'Unknown';
               const attacker = data.participants?.find(
                 (p: any) => p.player_id !== playerId
               );
-              respawnStore.setDestroyed(
+              stores.respawn.setDestroyed(
                 currentSector,
                 attacker?.display_name || attacker?.ship_name || 'Enemy'
               );
@@ -172,7 +176,7 @@ export function useSSEEvents(
 
           // Add damage number animation
           if (action.damage) {
-            combatStore.addDamageNumber({
+            stores.combat.addDamageNumber({
               id: `${Date.now()}-${Math.random()}`,
               damage: action.damage,
               position: { x: 0, y: 0 },
@@ -193,7 +197,7 @@ export function useSSEEvents(
         notify('game.combat.loot', data);
 
         // Add to loot store
-        lootStore.addLoot({
+        getStores().loot.addLoot({
           credits: data.loot?.credits ?? 0,
           resources: data.loot?.resources ?? [],
           timestamp: Date.now(),
@@ -213,17 +217,18 @@ export function useSSEEvents(
         console.log('[SSE Events] Combat ended:', data.outcome);
         notify('game.combat.end', data);
 
-        combatStore.setCombatResult(data.outcome, data.total_ticks);
+        const stores = getStores();
+        stores.combat.setCombatResult(data.outcome, data.total_ticks);
 
         // Check if player was defeated (backup for destruction detection)
         const defeatOutcomes = ['player_defeat', 'player_destroyed', 'defeat', 'destroyed'];
         if (defeatOutcomes.includes(data.outcome?.toLowerCase())) {
-          const currentSector = usePositionStore.getState().currentSectorId || data.sector_id || 'Unknown';
+          const currentSector = stores.position.currentSectorId || data.sector_id || 'Unknown';
           // Find the entity that killed the player
           const killer = data.participants?.find(
             (p: any) => p.player_id !== playerId && p.hull > 0
           );
-          respawnStore.setDestroyed(
+          stores.respawn.setDestroyed(
             currentSector,
             killer?.display_name || killer?.ship_name || 'Combat'
           );
@@ -231,7 +236,7 @@ export function useSSEEvents(
 
         // Delay ending combat to show result
         setTimeout(() => {
-          combatStore.endCombat();
+          getStores().combat.endCombat();
         }, 500);
 
         callbacksRef.current?.onCombatEnd?.(data);
@@ -248,9 +253,10 @@ export function useSSEEvents(
 
         // Update stores with new sector
         if (data.to_sector) {
-          positionStore.setCurrentSector(data.to_sector);
-          locationStore.setDisplayLocation(data.to_sector);
-          locationStore.undock(); // Ensure undocked after jump
+          const stores = getStores();
+          stores.position.setCurrentSector(data.to_sector);
+          stores.location.setDisplayLocation(data.to_sector);
+          stores.location.undock(); // Ensure undocked after jump
         }
 
         // Refresh sector data
@@ -266,7 +272,7 @@ export function useSSEEvents(
         console.log('[SSE Events] Ship docked at:', data.station_id);
         notify('game.movement.dock', data);
 
-        locationStore.dock(
+        getStores().location.dock(
           data.station_id,
           data.station_name || 'Station',
           data.station_type || 'station',
@@ -283,7 +289,7 @@ export function useSSEEvents(
         console.log('[SSE Events] Ship undocked');
         notify('game.movement.undock', data);
 
-        locationStore.undock();
+        getStores().location.undock();
 
         callbacksRef.current?.onShipUndocked?.(data);
       })
@@ -298,8 +304,9 @@ export function useSSEEvents(
         console.log('[SSE Events] Mission assigned:', data.template_name);
         notify('game.missions.assigned', data);
 
-        missionStore.fetchActive();
-        missionStore.fetchAvailable();
+        const stores = getStores();
+        stores.mission.fetchActive();
+        stores.mission.fetchAvailable();
 
         callbacksRef.current?.onMissionAssigned?.(data);
       })
@@ -312,7 +319,7 @@ export function useSSEEvents(
         console.log('[SSE Events] Objective updated:', data.objective_id);
         notify('game.missions.objective', data);
 
-        missionStore.updateObjectiveProgress(data.mission_id, data.objective_id, {
+        getStores().mission.updateObjectiveProgress(data.mission_id, data.objective_id, {
           current_progress: data.current_count,
           status: data.completed ? 'completed' : 'in_progress',
         });
@@ -330,14 +337,14 @@ export function useSSEEvents(
         console.log('[SSE Events] Mission completed:', data.mission_id);
         notify('game.missions.completed', data);
 
-        missionStore.markMissionCompleted(data.mission_id);
+        getStores().mission.markMissionCompleted(data.mission_id);
 
         queryClient.invalidateQueries({ queryKey: ['missions'] });
         queryClient.invalidateQueries({ queryKey: ['characters'] });
         queryClient.invalidateQueries({ queryKey: ['reputations'] });
 
         // Show notification
-        notificationStore.addNotification({
+        getStores().notification.addNotification({
           type: 'mission_completed',
           urgency: 'important',
           title: 'Mission Complete!',
@@ -415,6 +422,7 @@ export function useSSEEvents(
         };
 
         // Apply if we have this sector loaded
+        const procgenStore = getStores().procgen;
         const currentVersion = procgenStore.getSectorVersion(data.sector_id);
         if (currentVersion !== undefined && data.version > currentVersion) {
           procgenStore.applyDelta(delta);
@@ -436,7 +444,7 @@ export function useSSEEvents(
 
         // Show notification for tier changes
         if (data.tier_changed) {
-          notificationStore.addNotification({
+          getStores().notification.addNotification({
             type: 'reputation_change',
             urgency: 'important',
             title: 'Reputation Changed',
@@ -467,8 +475,9 @@ export function useSSEEvents(
         notify('game.travel.completed', data);
 
         if (data.destination_sector) {
-          positionStore.setCurrentSector(data.destination_sector);
-          locationStore.setDisplayLocation(data.destination_sector);
+          const stores = getStores();
+          stores.position.setCurrentSector(data.destination_sector);
+          stores.location.setDisplayLocation(data.destination_sector);
         }
         queryClient.invalidateQueries({ queryKey: ['sector'] });
 
@@ -491,7 +500,7 @@ export function useSSEEvents(
         console.log('[SSE Events] Travel interrupted:', data.reason);
         notify('game.travel.interrupted', data);
 
-        notificationStore.addNotification({
+        getStores().notification.addNotification({
           type: 'system_alert',
           urgency: 'important',
           title: 'Travel Interrupted',
@@ -510,7 +519,7 @@ export function useSSEEvents(
         notify('game.services.fuel_purchase', data);
 
         if (data.new_fuel !== undefined && data.fuel_max !== undefined) {
-          shipSystemsStore.updateFuel(data.new_fuel, data.fuel_max);
+          getStores().shipSystems.updateFuel(data.new_fuel, data.fuel_max);
         }
         queryClient.invalidateQueries({ queryKey: ['user'] });
       })
@@ -522,11 +531,12 @@ export function useSSEEvents(
         console.log('[SSE Events] Ship repaired');
         notify('game.services.repair', data);
 
+        const shipSystems = getStores().shipSystems;
         if (data.new_hull !== undefined && data.hull_max !== undefined) {
-          shipSystemsStore.updateHull(data.new_hull, data.hull_max);
+          shipSystems.updateHull(data.new_hull, data.hull_max);
         }
         if (data.new_shield !== undefined && data.shield_max !== undefined) {
-          shipSystemsStore.updateShields(data.new_shield, data.shield_max);
+          shipSystems.updateShields(data.new_shield, data.shield_max);
         }
         queryClient.invalidateQueries({ queryKey: ['user'] });
       })
@@ -550,20 +560,7 @@ export function useSSEEvents(
       console.log('[SSE Events] Cleaning up all event listeners');
       cleanupFunctions.forEach((cleanup) => cleanup());
     };
-  }, [
-    playerId,
-    queryClient,
-    notify,
-    combatStore,
-    lootStore,
-    missionStore,
-    locationStore,
-    positionStore,
-    shipSystemsStore,
-    procgenStore,
-    notificationStore,
-    respawnStore,
-  ]);
+  }, [playerId, queryClient, notify]);
 
   // Return connection status
   return {

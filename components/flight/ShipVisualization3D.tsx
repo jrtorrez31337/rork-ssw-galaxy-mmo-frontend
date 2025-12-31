@@ -1,18 +1,29 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
-import { Renderer } from 'expo-three';
-import * as THREE from 'three';
+import Svg, {
+  Defs,
+  G,
+  Path,
+  Polygon,
+  Ellipse,
+  Circle,
+  Line,
+  LinearGradient,
+  RadialGradient,
+  Stop,
+  Rect,
+  ClipPath,
+} from 'react-native-svg';
 import { useFlightStore } from '@/stores/flightStore';
-import { tokens } from '@/ui/theme';
 
 /**
- * ShipVisualization3D - Three.js powered ship visualization
+ * ShipVisualization3D - Rugged pseudo-3D ship visualization
  *
- * Per Cinematic Arcade Flight Model Doctrine:
- * - 3D ship model responds to attitude controls (pitch/roll/yaw)
- * - Engine glow intensity based on throttle
- * - Starfield background with parallax
+ * Industrial/military aesthetic with:
+ * - Hard angles and panel lines
+ * - Weathered metallic surfaces
+ * - Mechanical details
+ * - Gritty color palette
  */
 
 interface ShipVisualization3DProps {
@@ -20,286 +31,669 @@ interface ShipVisualization3DProps {
   size?: { width: number; height: number };
 }
 
-// Ship color palette matching original design
+// Brightened military color palette - better visibility
 const SHIP_COLORS = {
-  scout: { primary: 0x4a90e2, emissive: 0x2a5082 },
-  fighter: { primary: 0xe74c3c, emissive: 0x872a22 },
-  trader: { primary: 0xf39c12, emissive: 0x936008 },
-  explorer: { primary: 0x2ecc71, emissive: 0x1a7a42 },
+  scout: {
+    hull: '#2a5a70',
+    plate: '#4a8aa0',
+    accent: '#00d0ff',
+    highlight: '#7de8ff',
+    panel: '#1a4050',
+    edge: '#00e8ff',
+  },
+  fighter: {
+    hull: '#5a2a2a',
+    plate: '#8a4a4a',
+    accent: '#ff4040',
+    highlight: '#ff7070',
+    panel: '#3a1a1a',
+    edge: '#ff5555',
+  },
+  trader: {
+    hull: '#5a4a2a',
+    plate: '#8a7a4a',
+    accent: '#ffaa00',
+    highlight: '#ffcc50',
+    panel: '#3a3020',
+    edge: '#ffbb22',
+  },
+  explorer: {
+    hull: '#4a2a5a',
+    plate: '#7a4a8a',
+    accent: '#aa55ee',
+    highlight: '#cc88ff',
+    panel: '#2a1a3a',
+    edge: '#bb66ff',
+  },
 };
 
-// Engine glow color
-const ENGINE_COLOR = 0xff6600;
+const ENGINE_COLORS = {
+  core: '#ffffff',
+  hot: '#ffcc00',
+  plasma: '#ff6600',
+  exhaust: '#ff330044',
+};
+
+/**
+ * Starfield with depth layers
+ */
+function Starfield({ width, height, pitch, yaw }: {
+  width: number;
+  height: number;
+  pitch: number;
+  yaw: number;
+}) {
+  const stars = useMemo(() => {
+    const result = [];
+    for (let layer = 0; layer < 3; layer++) {
+      const count = 50 - layer * 12;
+      for (let i = 0; i < count; i++) {
+        result.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          size: 0.3 + Math.random() * (1.2 - layer * 0.3),
+          opacity: 0.15 + Math.random() * 0.35 + layer * 0.08,
+          layer,
+        });
+      }
+    }
+    return result;
+  }, [width, height]);
+
+  return (
+    <G>
+      {stars.map((star, i) => {
+        const parallaxFactor = (3 - star.layer) * 0.35;
+        const offsetX = yaw * 25 * parallaxFactor;
+        const offsetY = pitch * 25 * parallaxFactor;
+        const x = ((star.x + offsetX) % width + width) % width;
+        const y = ((star.y + offsetY) % height + height) % height;
+
+        return (
+          <Circle
+            key={i}
+            cx={x}
+            cy={y}
+            r={star.size}
+            fill="#aabbcc"
+            opacity={star.opacity}
+          />
+        );
+      })}
+    </G>
+  );
+}
+
+/**
+ * Engine exhaust - industrial plasma burn
+ */
+function EngineExhaust({ cx, cy, throttle, scale = 1, wide = false }: {
+  cx: number;
+  cy: number;
+  throttle: number;
+  scale?: number;
+  wide?: boolean;
+}) {
+  if (throttle < 0.03) return null;
+
+  const len = (12 + throttle * 35) * scale;
+  const w = wide ? (8 + throttle * 12) * scale : (4 + throttle * 6) * scale;
+
+  return (
+    <G>
+      {/* Exhaust plume */}
+      <Polygon
+        points={`
+          ${cx - w},${cy}
+          ${cx + w},${cy}
+          ${cx + w * 0.3},${cy + len}
+          ${cx - w * 0.3},${cy + len}
+        `}
+        fill={ENGINE_COLORS.exhaust}
+      />
+      {/* Plasma core */}
+      <Polygon
+        points={`
+          ${cx - w * 0.6},${cy}
+          ${cx + w * 0.6},${cy}
+          ${cx + w * 0.15},${cy + len * 0.7}
+          ${cx - w * 0.15},${cy + len * 0.7}
+        `}
+        fill={ENGINE_COLORS.plasma}
+        opacity={0.6 + throttle * 0.4}
+      />
+      {/* Hot center */}
+      <Polygon
+        points={`
+          ${cx - w * 0.25},${cy}
+          ${cx + w * 0.25},${cy}
+          ${cx},${cy + len * 0.4}
+        `}
+        fill={ENGINE_COLORS.hot}
+        opacity={0.8}
+      />
+      {/* White hot tip */}
+      <Circle
+        cx={cx}
+        cy={cy + 2 * scale}
+        r={w * 0.2}
+        fill={ENGINE_COLORS.core}
+        opacity={0.9}
+      />
+    </G>
+  );
+}
+
+/**
+ * Panel line detail
+ */
+function PanelLine({ x1, y1, x2, y2, color }: {
+  x1: number; y1: number; x2: number; y2: number; color: string;
+}) {
+  return (
+    <Line
+      x1={x1} y1={y1} x2={x2} y2={y2}
+      stroke={color}
+      strokeWidth={0.5}
+      opacity={0.6}
+    />
+  );
+}
+
+/**
+ * Scout - Fast recon vessel, angular stealth design
+ */
+function ScoutShip({ colors, roll, pitch, throttle, size }: {
+  colors: typeof SHIP_COLORS.scout;
+  roll: number;
+  pitch: number;
+  throttle: number;
+  size: number;
+}) {
+  const s = size / 100;
+  const pY = pitch * 0.35;
+  const rollAngle = roll * 35;
+  const cx = 50 * s;
+
+  return (
+    <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
+      <Defs>
+        <LinearGradient id="scoutHull" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor={colors.plate} />
+          <Stop offset="50%" stopColor={colors.hull} />
+          <Stop offset="100%" stopColor={colors.panel} />
+        </LinearGradient>
+      </Defs>
+
+      {/* Engine */}
+      <EngineExhaust cx={cx} cy={(78 + pY * 8) * s} throttle={throttle} scale={s} />
+
+      {/* Main hull - angular wedge */}
+      <Polygon
+        points={`
+          ${50 * s},${(10 - pY * 12) * s}
+          ${(80 + pY * 5) * s},${(50 + pY * 3) * s}
+          ${(70 + pY * 4) * s},${(80 + pY * 6) * s}
+          ${(30 - pY * 4) * s},${(80 + pY * 6) * s}
+          ${(20 - pY * 5) * s},${(50 + pY * 3) * s}
+        `}
+        fill="url(#scoutHull)"
+        stroke={colors.edge}
+        strokeWidth={1}
+      />
+
+      {/* Armored plates */}
+      <Polygon
+        points={`
+          ${50 * s},${(18 - pY * 10) * s}
+          ${(68 + pY * 4) * s},${(45 + pY * 2) * s}
+          ${50 * s},${58 * s}
+          ${(32 - pY * 4) * s},${(45 + pY * 2) * s}
+        `}
+        fill={colors.plate}
+        stroke={colors.panel}
+        strokeWidth={0.5}
+      />
+
+      {/* Panel lines */}
+      <PanelLine x1={50*s} y1={(25-pY*8)*s} x2={(65+pY*3)*s} y2={(42+pY*2)*s} color={colors.panel} />
+      <PanelLine x1={50*s} y1={(25-pY*8)*s} x2={(35-pY*3)*s} y2={(42+pY*2)*s} color={colors.panel} />
+      <PanelLine x1={50*s} y1={55*s} x2={(60+pY*3)*s} y2={(70+pY*4)*s} color={colors.panel} />
+      <PanelLine x1={50*s} y1={55*s} x2={(40-pY*3)*s} y2={(70+pY*4)*s} color={colors.panel} />
+
+      {/* Cockpit viewport */}
+      <Polygon
+        points={`
+          ${50 * s},${(28 - pY * 7) * s}
+          ${(58 + pY * 2) * s},${(38 - pY * 4) * s}
+          ${(58 + pY * 2) * s},${(45 - pY * 3) * s}
+          ${50 * s},${50 * s}
+          ${(42 - pY * 2) * s},${(45 - pY * 3) * s}
+          ${(42 - pY * 2) * s},${(38 - pY * 4) * s}
+        `}
+        fill={colors.panel}
+        stroke={colors.accent}
+        strokeWidth={1}
+      />
+      {/* Viewport glass */}
+      <Polygon
+        points={`
+          ${50 * s},${(32 - pY * 6) * s}
+          ${(54 + pY * 1) * s},${(38 - pY * 4) * s}
+          ${50 * s},${44 * s}
+          ${(46 - pY * 1) * s},${(38 - pY * 4) * s}
+        `}
+        fill="#1a4455"
+        stroke={colors.accent}
+        strokeWidth={0.5}
+        opacity={0.9}
+      />
+
+      {/* Thruster housings */}
+      <Rect
+        x={(42) * s} y={(72 + pY * 5) * s}
+        width={16 * s} height={8 * s}
+        fill={colors.panel}
+        stroke={colors.hull}
+        strokeWidth={0.5}
+      />
+    </G>
+  );
+}
+
+/**
+ * Fighter - Heavy combat vessel, brutal angular design
+ */
+function FighterShip({ colors, roll, pitch, throttle, size }: {
+  colors: typeof SHIP_COLORS.fighter;
+  roll: number;
+  pitch: number;
+  throttle: number;
+  size: number;
+}) {
+  const s = size / 100;
+  const pY = pitch * 0.35;
+  const rollAngle = roll * 38;
+  const cx = 50 * s;
+
+  return (
+    <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
+      <Defs>
+        <LinearGradient id="fighterHull" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor={colors.plate} />
+          <Stop offset="60%" stopColor={colors.hull} />
+          <Stop offset="100%" stopColor={colors.panel} />
+        </LinearGradient>
+      </Defs>
+
+      {/* Twin engines */}
+      <EngineExhaust cx={(35) * s} cy={(82 + pY * 6) * s} throttle={throttle} scale={s * 0.9} />
+      <EngineExhaust cx={(65) * s} cy={(82 + pY * 6) * s} throttle={throttle} scale={s * 0.9} />
+
+      {/* Main hull - aggressive angular */}
+      <Polygon
+        points={`
+          ${50 * s},${(8 - pY * 12) * s}
+          ${(78 + pY * 6) * s},${(40 + pY * 2) * s}
+          ${(85 + pY * 7) * s},${(60 + pY * 4) * s}
+          ${(72 + pY * 5) * s},${(82 + pY * 6) * s}
+          ${(28 - pY * 5) * s},${(82 + pY * 6) * s}
+          ${(15 - pY * 7) * s},${(60 + pY * 4) * s}
+          ${(22 - pY * 6) * s},${(40 + pY * 2) * s}
+        `}
+        fill="url(#fighterHull)"
+        stroke={colors.edge}
+        strokeWidth={1.5}
+      />
+
+      {/* Wing weapon pylons */}
+      <Polygon
+        points={`
+          ${(15 - pY * 7) * s},${(60 + pY * 4) * s}
+          ${(5) * s},${(72 + pY * 5) * s}
+          ${(8) * s},${(78 + pY * 6) * s}
+          ${(28 - pY * 5) * s},${(75 + pY * 5) * s}
+        `}
+        fill={colors.hull}
+        stroke={colors.plate}
+        strokeWidth={0.5}
+      />
+      <Polygon
+        points={`
+          ${(85 + pY * 7) * s},${(60 + pY * 4) * s}
+          ${(95) * s},${(72 + pY * 5) * s}
+          ${(92) * s},${(78 + pY * 6) * s}
+          ${(72 + pY * 5) * s},${(75 + pY * 5) * s}
+        `}
+        fill={colors.hull}
+        stroke={colors.plate}
+        strokeWidth={0.5}
+      />
+
+      {/* Weapon hardpoints */}
+      <Rect x={3*s} y={(70+pY*5)*s} width={6*s} height={10*s} fill={colors.panel} stroke={colors.accent} strokeWidth={0.5} />
+      <Rect x={91*s} y={(70+pY*5)*s} width={6*s} height={10*s} fill={colors.panel} stroke={colors.accent} strokeWidth={0.5} />
+
+      {/* Center armor plate */}
+      <Polygon
+        points={`
+          ${50 * s},${(20 - pY * 10) * s}
+          ${(68 + pY * 4) * s},${(42 + pY * 2) * s}
+          ${(65 + pY * 4) * s},${(65 + pY * 4) * s}
+          ${(35 - pY * 4) * s},${(65 + pY * 4) * s}
+          ${(32 - pY * 4) * s},${(42 + pY * 2) * s}
+        `}
+        fill={colors.plate}
+        stroke={colors.panel}
+        strokeWidth={0.5}
+      />
+
+      {/* Panel lines */}
+      <PanelLine x1={50*s} y1={(30-pY*8)*s} x2={(62+pY*3)*s} y2={(50+pY*2)*s} color={colors.panel} />
+      <PanelLine x1={50*s} y1={(30-pY*8)*s} x2={(38-pY*3)*s} y2={(50+pY*2)*s} color={colors.panel} />
+
+      {/* Cockpit - armored canopy */}
+      <Polygon
+        points={`
+          ${50 * s},${(25 - pY * 8) * s}
+          ${(60 + pY * 2) * s},${(35 - pY * 5) * s}
+          ${(58 + pY * 2) * s},${(48 - pY * 3) * s}
+          ${(42 - pY * 2) * s},${(48 - pY * 3) * s}
+          ${(40 - pY * 2) * s},${(35 - pY * 5) * s}
+        `}
+        fill="#1a1a22"
+        stroke={colors.accent}
+        strokeWidth={1}
+      />
+
+      {/* Engine nacelles */}
+      <Rect x={28*s} y={(72+pY*5)*s} width={14*s} height={10*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      <Rect x={58*s} y={(72+pY*5)*s} width={14*s} height={10*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+    </G>
+  );
+}
+
+/**
+ * Trader - Industrial cargo hauler, blocky utilitarian
+ */
+function TraderShip({ colors, roll, pitch, throttle, size }: {
+  colors: typeof SHIP_COLORS.trader;
+  roll: number;
+  pitch: number;
+  throttle: number;
+  size: number;
+}) {
+  const s = size / 100;
+  const pY = pitch * 0.3;
+  const rollAngle = roll * 25;
+  const cx = 50 * s;
+
+  return (
+    <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
+      <Defs>
+        <LinearGradient id="traderHull" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor={colors.plate} />
+          <Stop offset="50%" stopColor={colors.hull} />
+          <Stop offset="100%" stopColor={colors.panel} />
+        </LinearGradient>
+      </Defs>
+
+      {/* Engine array */}
+      <EngineExhaust cx={(28) * s} cy={(85 + pY * 5) * s} throttle={throttle} scale={s * 0.7} wide />
+      <EngineExhaust cx={(50) * s} cy={(87 + pY * 5) * s} throttle={throttle} scale={s * 0.8} wide />
+      <EngineExhaust cx={(72) * s} cy={(85 + pY * 5) * s} throttle={throttle} scale={s * 0.7} wide />
+
+      {/* Main cargo hull - blocky industrial */}
+      <Polygon
+        points={`
+          ${(18 - pY * 4) * s},${(18 - pY * 8) * s}
+          ${(82 + pY * 4) * s},${(18 - pY * 8) * s}
+          ${(85 + pY * 5) * s},${(75 + pY * 6) * s}
+          ${(80 + pY * 4) * s},${(85 + pY * 6) * s}
+          ${(20 - pY * 4) * s},${(85 + pY * 6) * s}
+          ${(15 - pY * 5) * s},${(75 + pY * 6) * s}
+        `}
+        fill="url(#traderHull)"
+        stroke={colors.edge}
+        strokeWidth={1.5}
+      />
+
+      {/* Cargo container segments */}
+      <Rect x={(22-pY*3)*s} y={(28-pY*6)*s} width={(56+pY*6)*s} height={18*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} />
+      <Rect x={(22-pY*2)*s} y={(50-pY*3)*s} width={(56+pY*4)*s} height={18*s} fill={colors.plate} stroke={colors.panel} strokeWidth={0.5} />
+
+      {/* Container dividers */}
+      <Line x1={40*s} y1={(28-pY*6)*s} x2={40*s} y2={(46-pY*4)*s} stroke={colors.panel} strokeWidth={1} />
+      <Line x1={60*s} y1={(28-pY*6)*s} x2={60*s} y2={(46-pY*4)*s} stroke={colors.panel} strokeWidth={1} />
+      <Line x1={40*s} y1={(50-pY*3)*s} x2={40*s} y2={(68-pY*1)*s} stroke={colors.panel} strokeWidth={1} />
+      <Line x1={60*s} y1={(50-pY*3)*s} x2={60*s} y2={(68-pY*1)*s} stroke={colors.panel} strokeWidth={1} />
+
+      {/* Bridge module */}
+      <Polygon
+        points={`
+          ${(35 - pY * 2) * s},${(8 - pY * 10) * s}
+          ${(65 + pY * 2) * s},${(8 - pY * 10) * s}
+          ${(68 + pY * 3) * s},${(22 - pY * 7) * s}
+          ${(32 - pY * 3) * s},${(22 - pY * 7) * s}
+        `}
+        fill={colors.hull}
+        stroke={colors.plate}
+        strokeWidth={0.5}
+      />
+
+      {/* Bridge viewport */}
+      <Rect x={(40-pY)*s} y={(10-pY*9)*s} width={(20+pY*2)*s} height={8*s} fill="#1a2a22" stroke={colors.accent} strokeWidth={0.5} />
+
+      {/* Hull reinforcement struts */}
+      <Line x1={(18-pY*4)*s} y1={(35-pY*5)*s} x2={(18-pY*4)*s} y2={(70+pY*4)*s} stroke={colors.plate} strokeWidth={2} />
+      <Line x1={(82+pY*4)*s} y1={(35-pY*5)*s} x2={(82+pY*4)*s} y2={(70+pY*4)*s} stroke={colors.plate} strokeWidth={2} />
+
+      {/* Engine housing */}
+      <Rect x={(18-pY*3)*s} y={(75+pY*5)*s} width={(64+pY*6)*s} height={10*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+    </G>
+  );
+}
+
+/**
+ * Explorer - Long-range science vessel, functional asymmetric
+ */
+function ExplorerShip({ colors, roll, pitch, throttle, size }: {
+  colors: typeof SHIP_COLORS.explorer;
+  roll: number;
+  pitch: number;
+  throttle: number;
+  size: number;
+}) {
+  const s = size / 100;
+  const pY = pitch * 0.35;
+  const rollAngle = roll * 32;
+  const cx = 50 * s;
+
+  return (
+    <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
+      <Defs>
+        <LinearGradient id="explorerHull" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor={colors.plate} />
+          <Stop offset="50%" stopColor={colors.hull} />
+          <Stop offset="100%" stopColor={colors.panel} />
+        </LinearGradient>
+      </Defs>
+
+      {/* Main engine */}
+      <EngineExhaust cx={cx} cy={(85 + pY * 6) * s} throttle={throttle} scale={s} />
+
+      {/* Main hull - elongated */}
+      <Polygon
+        points={`
+          ${50 * s},${(5 - pY * 12) * s}
+          ${(72 + pY * 5) * s},${(40 + pY * 2) * s}
+          ${(68 + pY * 5) * s},${(82 + pY * 6) * s}
+          ${(32 - pY * 5) * s},${(82 + pY * 6) * s}
+          ${(28 - pY * 5) * s},${(40 + pY * 2) * s}
+        `}
+        fill="url(#explorerHull)"
+        stroke={colors.edge}
+        strokeWidth={1}
+      />
+
+      {/* Sensor dish assembly */}
+      <Circle
+        cx={(78 + pY * 6) * s}
+        cy={(25 - pY * 8) * s}
+        r={14 * s}
+        fill={colors.plate}
+        stroke={colors.accent}
+        strokeWidth={1}
+      />
+      <Circle
+        cx={(78 + pY * 6) * s}
+        cy={(25 - pY * 8) * s}
+        r={10 * s}
+        fill={colors.hull}
+        stroke={colors.panel}
+        strokeWidth={0.5}
+      />
+      <Circle
+        cx={(78 + pY * 6) * s}
+        cy={(25 - pY * 8) * s}
+        r={4 * s}
+        fill={colors.accent}
+        opacity={0.8}
+      />
+      {/* Dish arm */}
+      <Rect
+        x={(62 + pY * 4) * s}
+        y={(32 - pY * 5) * s}
+        width={14 * s}
+        height={4 * s}
+        fill={colors.hull}
+        stroke={colors.panel}
+        strokeWidth={0.5}
+      />
+
+      {/* Science module */}
+      <Rect
+        x={(38 - pY * 2) * s}
+        y={(22 - pY * 9) * s}
+        width={(24 + pY * 4) * s}
+        height={20 * s}
+        fill={colors.plate}
+        stroke={colors.panel}
+        strokeWidth={0.5}
+      />
+
+      {/* Sensor arrays */}
+      {[0, 1, 2, 3].map(i => (
+        <Rect
+          key={i}
+          x={(42 + i * 5) * s}
+          y={(15 - pY * 10) * s}
+          width={3 * s}
+          height={6 * s}
+          fill={colors.accent}
+          opacity={0.8}
+        />
+      ))}
+
+      {/* Wing struts */}
+      <Polygon
+        points={`
+          ${(28 - pY * 5) * s},${(45 + pY * 2) * s}
+          ${(10) * s},${(65 + pY * 4) * s}
+          ${(15) * s},${(70 + pY * 4) * s}
+          ${(32 - pY * 4) * s},${(55 + pY * 3) * s}
+        `}
+        fill={colors.hull}
+        stroke={colors.plate}
+        strokeWidth={0.5}
+      />
+      <Polygon
+        points={`
+          ${(72 + pY * 5) * s},${(45 + pY * 2) * s}
+          ${(90) * s},${(65 + pY * 4) * s}
+          ${(85) * s},${(70 + pY * 4) * s}
+          ${(68 + pY * 4) * s},${(55 + pY * 3) * s}
+        `}
+        fill={colors.hull}
+        stroke={colors.plate}
+        strokeWidth={0.5}
+      />
+
+      {/* Cockpit */}
+      <Polygon
+        points={`
+          ${50 * s},${(18 - pY * 10) * s}
+          ${(58 + pY * 2) * s},${(28 - pY * 7) * s}
+          ${(55 + pY * 1) * s},${(40 - pY * 4) * s}
+          ${(45 - pY * 1) * s},${(40 - pY * 4) * s}
+          ${(42 - pY * 2) * s},${(28 - pY * 7) * s}
+        `}
+        fill="#1a1a2a"
+        stroke={colors.accent}
+        strokeWidth={0.5}
+      />
+
+      {/* Panel lines */}
+      <PanelLine x1={50*s} y1={(35-pY*5)*s} x2={(65+pY*4)*s} y2={(60+pY*3)*s} color={colors.panel} />
+      <PanelLine x1={50*s} y1={(35-pY*5)*s} x2={(35-pY*4)*s} y2={(60+pY*3)*s} color={colors.panel} />
+
+      {/* Engine housing */}
+      <Rect x={(38-pY*3)*s} y={(75+pY*5)*s} width={(24+pY*6)*s} height={8*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+    </G>
+  );
+}
 
 export function ShipVisualization3D({
   shipType = 'scout',
   size = { width: 300, height: 400 },
 }: ShipVisualization3DProps) {
-  const glRef = useRef<ExpoWebGLRenderingContext | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const shipRef = useRef<THREE.Group | null>(null);
-  const engineGlowRef = useRef<THREE.PointLight | null>(null);
-  const starsRef = useRef<THREE.Points | null>(null);
-  const frameIdRef = useRef<number | null>(null);
-
-  // Subscribe to flight state
   const attitude = useFlightStore((s) => s.attitude);
   const throttle = useFlightStore((s) => s.throttle);
-  const profile = useFlightStore((s) => s.profile);
 
-  // Create ship geometry based on type
-  const createShipGeometry = useCallback((type: string): THREE.BufferGeometry => {
-    switch (type) {
-      case 'scout':
-        // Scout: Fast and sleek - elongated dodecahedron
-        return new THREE.DodecahedronGeometry(1, 0);
-      case 'fighter':
-        // Fighter: Angular and aggressive - octahedron
-        return new THREE.OctahedronGeometry(1, 0);
-      case 'trader':
-        // Trader: Bulky cargo vessel - box
-        return new THREE.BoxGeometry(1.5, 0.8, 2);
-      case 'explorer':
-        // Explorer: Pointed long-range vessel - cone
-        return new THREE.ConeGeometry(0.8, 2, 8);
-      default:
-        return new THREE.BoxGeometry(1, 1, 1);
+  const colors = SHIP_COLORS[shipType] || SHIP_COLORS.scout;
+  const shipSize = Math.min(size.width, size.height) * 0.7;
+
+  const shipProps = {
+    colors,
+    roll: attitude.roll.smoothed,
+    pitch: attitude.pitch.smoothed,
+    throttle: throttle.current,
+    size: shipSize,
+  };
+
+  const renderShip = () => {
+    switch (shipType) {
+      case 'scout': return <ScoutShip {...shipProps} />;
+      case 'fighter': return <FighterShip {...shipProps} />;
+      case 'trader': return <TraderShip {...shipProps} />;
+      case 'explorer': return <ExplorerShip {...shipProps} />;
+      default: return <ScoutShip {...shipProps} />;
     }
-  }, []);
-
-  // Create starfield
-  const createStarfield = useCallback((): THREE.Points => {
-    const starsGeometry = new THREE.BufferGeometry();
-    const starPositions: number[] = [];
-    const starColors: number[] = [];
-
-    for (let i = 0; i < 2000; i++) {
-      // Distribute stars in a sphere around the camera
-      const radius = 50 + Math.random() * 100;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-
-      starPositions.push(
-        radius * Math.sin(phi) * Math.cos(theta),
-        radius * Math.sin(phi) * Math.sin(theta),
-        radius * Math.cos(phi)
-      );
-
-      // Vary star colors slightly (white to blue-white)
-      const brightness = 0.5 + Math.random() * 0.5;
-      starColors.push(brightness, brightness, brightness + Math.random() * 0.2);
-    }
-
-    starsGeometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(starPositions, 3)
-    );
-    starsGeometry.setAttribute(
-      'color',
-      new THREE.Float32BufferAttribute(starColors, 3)
-    );
-
-    const starsMaterial = new THREE.PointsMaterial({
-      size: 0.5,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.8,
-    });
-
-    return new THREE.Points(starsGeometry, starsMaterial);
-  }, []);
-
-  // Create ship model
-  const createShip = useCallback((type: string): THREE.Group => {
-    const group = new THREE.Group();
-    const colors = SHIP_COLORS[type as keyof typeof SHIP_COLORS] || SHIP_COLORS.scout;
-
-    // Main ship body
-    const geometry = createShipGeometry(type);
-    const material = new THREE.MeshStandardMaterial({
-      color: colors.primary,
-      metalness: 0.8,
-      roughness: 0.2,
-      emissive: colors.emissive,
-      emissiveIntensity: 0.3,
-    });
-
-    const shipMesh = new THREE.Mesh(geometry, material);
-
-    // Rotate to face forward (toward camera initially)
-    if (type === 'explorer') {
-      shipMesh.rotation.x = Math.PI / 2; // Point cone forward
-    }
-
-    group.add(shipMesh);
-
-    // Add engine housing (back of ship)
-    const engineGeometry = new THREE.CylinderGeometry(0.3, 0.4, 0.4, 8);
-    const engineMaterial = new THREE.MeshStandardMaterial({
-      color: 0x333333,
-      metalness: 0.9,
-      roughness: 0.3,
-    });
-
-    const leftEngine = new THREE.Mesh(engineGeometry, engineMaterial);
-    leftEngine.position.set(-0.5, 0, 0.8);
-    leftEngine.rotation.x = Math.PI / 2;
-    group.add(leftEngine);
-
-    const rightEngine = new THREE.Mesh(engineGeometry, engineMaterial);
-    rightEngine.position.set(0.5, 0, 0.8);
-    rightEngine.rotation.x = Math.PI / 2;
-    group.add(rightEngine);
-
-    // Add engine glow (will be updated based on throttle)
-    const engineGlow = new THREE.PointLight(ENGINE_COLOR, 0, 5);
-    engineGlow.position.set(0, 0, 1.2);
-    group.add(engineGlow);
-    engineGlowRef.current = engineGlow;
-
-    return group;
-  }, [createShipGeometry]);
-
-  // Initialize Three.js scene
-  const onContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
-    glRef.current = gl;
-
-    // Create renderer with options
-    const renderer = new Renderer({
-      gl,
-      width: gl.drawingBufferWidth,
-      height: gl.drawingBufferHeight,
-      clearColor: 0x000510, // Deep space blue-black
-    });
-    rendererRef.current = renderer;
-
-    // Create scene
-    const scene = new THREE.Scene();
-    sceneRef.current = scene;
-
-    // Create camera
-    const camera = new THREE.PerspectiveCamera(
-      50,
-      gl.drawingBufferWidth / gl.drawingBufferHeight,
-      0.1,
-      1000
-    );
-    camera.position.set(0, 1, 5);
-    camera.lookAt(0, 0, 0);
-    cameraRef.current = camera;
-
-    // Add lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
-    scene.add(ambientLight);
-
-    const mainLight = new THREE.DirectionalLight(0xffffff, 1);
-    mainLight.position.set(5, 5, 5);
-    scene.add(mainLight);
-
-    const fillLight = new THREE.DirectionalLight(0x667eea, 0.4);
-    fillLight.position.set(-5, -5, -5);
-    scene.add(fillLight);
-
-    // Add rim light for dramatic effect
-    const rimLight = new THREE.DirectionalLight(0x00ffff, 0.3);
-    rimLight.position.set(0, 0, -10);
-    scene.add(rimLight);
-
-    // Add starfield
-    const stars = createStarfield();
-    scene.add(stars);
-    starsRef.current = stars;
-
-    // Create and add ship
-    const ship = createShip(shipType);
-    scene.add(ship);
-    shipRef.current = ship;
-
-    // Animation loop
-    const animate = () => {
-      frameIdRef.current = requestAnimationFrame(animate);
-
-      if (!shipRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) {
-        return;
-      }
-
-      // Update ship rotation based on attitude (from store)
-      const currentAttitude = useFlightStore.getState().attitude;
-      const currentThrottle = useFlightStore.getState().throttle;
-
-      // Apply attitude to ship rotation
-      // Roll: rotate around Z axis (banking)
-      // Pitch: rotate around X axis (nose up/down)
-      // Yaw: rotate around Y axis (turning)
-      shipRef.current.rotation.z = -currentAttitude.roll.smoothed * Math.PI / 4; // ±45 degrees
-      shipRef.current.rotation.x = currentAttitude.pitch.smoothed * Math.PI / 6;  // ±30 degrees
-      shipRef.current.rotation.y = currentAttitude.yaw.smoothed * Math.PI / 6;    // ±30 degrees
-
-      // Update engine glow based on throttle
-      if (engineGlowRef.current) {
-        engineGlowRef.current.intensity = currentThrottle.current * 3;
-        // Shift color from orange to white at high throttle
-        const r = 1;
-        const g = 0.4 + currentThrottle.current * 0.4;
-        const b = currentThrottle.current * 0.5;
-        engineGlowRef.current.color.setRGB(r, g, b);
-      }
-
-      // Subtle starfield parallax based on attitude
-      if (starsRef.current) {
-        starsRef.current.rotation.y = currentAttitude.yaw.smoothed * 0.1;
-        starsRef.current.rotation.x = currentAttitude.pitch.smoothed * 0.1;
-      }
-
-      // Render
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
-      gl.endFrameEXP();
-    };
-
-    animate();
-  }, [shipType, createShip, createStarfield]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (frameIdRef.current) {
-        cancelAnimationFrame(frameIdRef.current);
-      }
-      // Dispose of Three.js resources
-      if (sceneRef.current) {
-        sceneRef.current.traverse((object: THREE.Object3D) => {
-          if (object instanceof THREE.Mesh) {
-            object.geometry.dispose();
-            if (object.material instanceof THREE.Material) {
-              object.material.dispose();
-            }
-          }
-        });
-      }
-      if (rendererRef.current) {
-        rendererRef.current.dispose();
-      }
-    };
-  }, []);
-
-  // Update ship type if it changes
-  useEffect(() => {
-    if (sceneRef.current && shipRef.current) {
-      sceneRef.current.remove(shipRef.current);
-      const newShip = createShip(shipType);
-      sceneRef.current.add(newShip);
-      shipRef.current = newShip;
-    }
-  }, [shipType, createShip]);
+  };
 
   return (
     <View style={[styles.container, { width: size.width, height: size.height }]}>
-      <GLView
-        style={styles.glView}
-        onContextCreate={onContextCreate}
-      />
+      <Svg
+        width={size.width}
+        height={size.height}
+        viewBox={`0 0 ${size.width} ${size.height}`}
+      >
+        {/* Space background */}
+        <Rect x="0" y="0" width={size.width} height={size.height} fill="#030308" />
+
+        {/* Starfield */}
+        <Starfield
+          width={size.width}
+          height={size.height}
+          pitch={attitude.pitch.smoothed}
+          yaw={attitude.yaw.smoothed}
+        />
+
+        {/* Ship */}
+        <G transform={`translate(${(size.width - shipSize) / 2}, ${(size.height - shipSize) / 2})`}>
+          {renderShip()}
+        </G>
+      </Svg>
     </View>
   );
 }
@@ -307,9 +701,6 @@ export function ShipVisualization3D({
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
-    borderRadius: 8,
-  },
-  glView: {
-    flex: 1,
+    borderRadius: 4,
   },
 });

@@ -19,7 +19,7 @@ import { useNPCStore } from '@/stores/npcStore';
 import { useCombatStore } from '@/stores/combatStore';
 import { useTravelStore } from '@/stores/travelStore';
 import { useProcgenStore, selectCurrentSectorMetadata } from '@/stores/procgenStore';
-import SectorView2D from '@/components/npc/SectorView2D';
+import { SectorView } from '@/components/sector';
 import NPCList from '@/components/npc/NPCList';
 import CombatHUD from '@/components/combat/CombatHUD';
 import CombatResults from '@/components/combat/CombatResults';
@@ -283,9 +283,9 @@ export default function MapTab() {
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {/* 2D Sector View */}
+            {/* Sector View (2D or 3D based on settings) */}
             <View style={styles.section}>
-              <SectorView2D
+              <SectorView
                 npcs={npcs}
                 playerPosition={playerPosition}
                 selectedNPCId={selectedNPC?.entity_id}

@@ -12,7 +12,7 @@ import { useTravelEvents } from '@/hooks/useTravelEvents';
 import { useNPCStore } from '@/stores/npcStore';
 import { useCombatStore } from '@/stores/combatStore';
 import { useTravelStore } from '@/stores/travelStore';
-import SectorView2D from '@/components/npc/SectorView2D';
+import { SectorView } from '@/components/sector';
 import CombatHUD from '@/components/combat/CombatHUD';
 import CombatResults from '@/components/combat/CombatResults';
 import LootNotification from '@/components/loot/LootNotification';
@@ -113,8 +113,8 @@ export default function BridgeScreen() {
 
   return (
     <View style={styles.viewport}>
-      {/* Primary Sector View */}
-      <SectorView2D
+      {/* Primary Sector View (2D or 3D based on settings) */}
+      <SectorView
         npcs={npcs}
         playerPosition={playerPosition}
         selectedNPCId={selectedNPC?.entity_id}
