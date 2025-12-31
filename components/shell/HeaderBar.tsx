@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
 import { useFlightStore, selectThrottle, selectProfile } from '@/stores/flightStore';
 import { computeFlightMetrics, getThrottleColor, getSpeedStatus } from '@/lib/flight/metrics';
+import { ConnectionDot } from '@/components/hud/ConnectionStatus';
 
 /**
  * HeaderBar (Status Rail)
@@ -315,12 +316,15 @@ export function HeaderBar() {
         />
       </View>
 
-      {/* Right: Alert status */}
+      {/* Right: Alert status + Connection */}
       <View style={styles.rightSection}>
-        <View style={[styles.alertIndicator, { backgroundColor: getAlertColor() }]}>
-          <Text style={styles.alertText}>
-            {alertLevel.toUpperCase()}
-          </Text>
+        <View style={styles.rightRow}>
+          <ConnectionDot size="small" />
+          <View style={[styles.alertIndicator, { backgroundColor: getAlertColor() }]}>
+            <Text style={styles.alertText}>
+              {alertLevel.toUpperCase()}
+            </Text>
+          </View>
         </View>
         {alertReason && alertLevel !== 'green' && (
           <Text style={styles.alertReason} numberOfLines={1}>
@@ -436,6 +440,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'flex-end',
     minWidth: 60,
+  },
+  rightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   alertIndicator: {
     paddingHorizontal: tokens.spacing[2],

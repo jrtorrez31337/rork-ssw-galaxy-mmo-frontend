@@ -10,6 +10,7 @@ import { ContextualPanel, PanelRouter } from '@/components/panels';
 import { FlightViewport } from '@/components/viewport/FlightViewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 import { useCommandHandler } from '@/hooks/useCommandHandler';
+import { RespawnOverlay } from '@/components/respawn/RespawnOverlay';
 
 /**
  * CockpitShell - Persistent Bridge Frame
@@ -145,6 +146,9 @@ export function CockpitShell({ children }: CockpitShellProps) {
 
       {/* Command Bar - Always visible */}
       <CommandBar />
+
+      {/* Respawn Overlay - Shows when player ship is destroyed */}
+      <RespawnOverlay />
     </View>
   );
 }

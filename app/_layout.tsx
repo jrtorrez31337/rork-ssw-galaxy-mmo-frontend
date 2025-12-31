@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { SSEEventProvider } from '@/contexts/SSEEventContext';
 import NotificationProvider from '@/components/notifications/NotificationProvider';
 
 SplashScreen.preventAutoHideAsync();
@@ -52,9 +53,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <AuthProvider>
-            <NotificationProvider>
-              <RootLayoutNav />
-            </NotificationProvider>
+            <SSEEventProvider>
+              <NotificationProvider>
+                <RootLayoutNav />
+              </NotificationProvider>
+            </SSEEventProvider>
           </AuthProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

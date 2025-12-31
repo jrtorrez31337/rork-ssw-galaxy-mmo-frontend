@@ -1,0 +1,20 @@
+{
+  "name": "ssw-frontend-tools",
+  "version": "1.0.0",
+  "description": "Development and testing tools for SSW Galaxy MMO frontend",
+  "private": true,
+  "scripts": {
+    "sse-test": "node sse-test.js",
+    "sse-test:help": "node sse-test.js --help",
+    "trading-test": "node trading-test.js",
+    "trading-test:help": "node trading-test.js --help",
+    "chat-test": "node chat-test.js",
+    "chat-test:help": "node chat-test.js --help",
+    "respawn-test": "node respawn-test.js",
+    "respawn-test:help": "node respawn-test.js --help",
+    "sprint2:all": "echo 'Sprint 2 Test Suite' && npm run trading-test:help && npm run chat-test:help && npm run respawn-test:help"
+  },
+  "dependencies": {
+    "eventsource": "^2.0.2"
+  }
+}
