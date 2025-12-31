@@ -7,7 +7,6 @@ import { useBridgeState } from '@/hooks/useBridgeState';
 import { useTravelStateStore } from '@/stores/travelStateStore';
 import { useLocationStore } from '@/stores/locationStore';
 import { useCommandStore } from '@/stores/commandStore';
-import { ShipSelectionPanel } from './ShipSelectionPanel';
 
 /**
  * NavigationPanel - NAV Rail Content
@@ -150,9 +149,6 @@ export function NavigationPanel() {
           />
         </Panel>
       )}
-
-      {/* Ship Selection & Flight Mode - Per Cinematic Flight Doctrine */}
-      <ShipSelectionPanel />
 
       {/* Quick Navigation */}
       <Panel variant="navigation" title="QUICK NAV" style={styles.panel}>
