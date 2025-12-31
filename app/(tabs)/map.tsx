@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RefreshCw } from 'lucide-react-native';
-import { TopBar, Text, Button, EmptyState } from '@/ui';
+import { Text, Button, EmptyState } from '@/ui';
 import { tokens } from '@/ui/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -221,14 +221,6 @@ export default function MapTab() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <TopBar
-        ship={currentShip}
-        location={currentShip?.location_sector || 'Unknown'}
-        dockedAt={currentShip?.docked_at}
-        credits={parseFloat(user?.credits || '0')}
-        quickActions={[]}
-      />
-
       {currentShip?.docked_at ? (
         // Show message when docked
         <View style={styles.dockedContainer}>
