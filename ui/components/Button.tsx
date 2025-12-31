@@ -158,6 +158,9 @@ const styles = StyleSheet.create({
   // Text styles
   text: {
     fontWeight: tokens.typography.fontWeight.semibold,
+    fontFamily: tokens.typography.fontFamily.mono,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   text_sm: {
     fontSize: tokens.typography.fontSize.sm,

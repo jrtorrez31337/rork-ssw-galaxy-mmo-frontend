@@ -1,13 +1,21 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import { Navigation, Target, Wrench, Radio, Crosshair, Rocket, LucideIcon } from 'lucide-react-native';
+import {
+  Navigation,
+  Target,
+  Wrench,
+  Radio,
+  Crosshair,
+  Rocket,
+  LucideIcon,
+} from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore, RailSystem } from '@/stores/cockpitStore';
 
 /**
  * LeftRail (Systems Rail)
  * Per UI/UX Doctrine Section 2: Always visible, 64-80pt width
- * Contains: NAV, OPS, TAC, ENG, COM
+ * Contains: NAV, FLT, OPS, TAC, ENG, COM
  * Single-tap selects system and populates Contextual Panel
  */
 

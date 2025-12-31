@@ -8,27 +8,29 @@ import { useTravelStateStore } from '@/stores/travelStateStore';
 
 /**
  * CommandBar (Action Rail)
- * Per UI/UX Doctrine Section 2: Always visible, 56-64pt height
- * Contains: Quick-info ticker (left), Secondary actions (center), Primary action (right)
- * Primary action is context-sensitive: ENGAGE, DOCK, FIRE, UNDOCK, etc.
- *
- * Actions are dispatched via commandStore for consumption by game systems.
+ * Command Console aesthetic - action buttons at bottom
+ * Context-sensitive primary action based on game state
  */
 
 interface ActionButtonProps {
   label: string;
   color: 'navigation' | 'combat' | 'economy' | 'default';
   isPrimary?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }
 
-function ActionButton({ label, color, isPrimary, onPress }: ActionButtonProps) {
+function ActionButton({ label, color, isPrimary, disabled, onPress }: ActionButtonProps) {
   const getButtonColor = () => {
     switch (color) {
-      case 'navigation': return tokens.colors.semantic.navigation;
-      case 'combat': return tokens.colors.semantic.combat;
-      case 'economy': return tokens.colors.semantic.economy;
-      default: return tokens.colors.lcars.peach;
+      case 'navigation':
+        return tokens.colors.command.blue;
+      case 'combat':
+        return tokens.colors.command.red;
+      case 'economy':
+        return tokens.colors.operations.engineering;
+      default:
+        return tokens.colors.text.secondary;
     }
   };
 
@@ -39,16 +41,29 @@ function ActionButton({ label, color, isPrimary, onPress }: ActionButtonProps) {
       style={[
         styles.actionButton,
         isPrimary && styles.primaryButton,
-        { backgroundColor: isPrimary ? buttonColor : 'transparent' },
+        {
+          backgroundColor: isPrimary
+            ? disabled
+              ? tokens.colors.console.hull
+              : buttonColor
+            : 'transparent',
+        },
         !isPrimary && { borderColor: buttonColor, borderWidth: 1 },
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={disabled ? 1 : 0.7}
+      disabled={disabled}
     >
       <Text
         style={[
           styles.actionLabel,
-          { color: isPrimary ? tokens.colors.text.inverse : buttonColor },
+          {
+            color: isPrimary
+              ? disabled
+                ? tokens.colors.text.muted
+                : tokens.colors.console.void
+              : buttonColor,
+          },
         ]}
       >
         {label}
@@ -143,11 +158,11 @@ export function CommandBar() {
             {displayTicker}
           </Text>
         ) : (
-          <Text style={styles.tickerPlaceholder}>READY</Text>
+          <Text style={styles.tickerPlaceholder}>SYSTEMS READY</Text>
         )}
       </View>
 
-      {/* Center-Right: Actions */}
+      {/* Right: Actions */}
       <View style={styles.actionsSection}>
         {/* Secondary actions */}
         {secondaryActions.map((action, index) => (
@@ -161,58 +176,28 @@ export function CommandBar() {
 
         {/* Primary action */}
         {displayPrimary && (
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              styles.primaryButton,
-              {
-                backgroundColor: displayPrimary.disabled
-                  ? tokens.colors.background.tertiary
-                  : getButtonColorValue(displayPrimary.color),
-              },
-            ]}
-            onPress={handlePrimaryAction}
-            activeOpacity={displayPrimary.disabled ? 1 : 0.7}
+          <ActionButton
+            label={displayPrimary.label}
+            color={displayPrimary.color}
+            isPrimary
             disabled={displayPrimary.disabled}
-          >
-            <Text
-              style={[
-                styles.actionLabel,
-                {
-                  color: displayPrimary.disabled
-                    ? tokens.colors.text.tertiary
-                    : tokens.colors.text.inverse,
-                },
-              ]}
-            >
-              {displayPrimary.label}
-            </Text>
-          </TouchableOpacity>
+            onPress={handlePrimaryAction}
+          />
         )}
       </View>
     </View>
   );
 }
 
-// Helper to get button color value
-function getButtonColorValue(color: 'navigation' | 'combat' | 'economy' | 'default'): string {
-  switch (color) {
-    case 'navigation': return tokens.colors.semantic.navigation;
-    case 'combat': return tokens.colors.semantic.combat;
-    case 'economy': return tokens.colors.semantic.economy;
-    default: return tokens.colors.lcars.peach;
-  }
-}
-
 const styles = StyleSheet.create({
   container: {
-    height: 64,
+    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: tokens.colors.background.panel,
+    backgroundColor: tokens.colors.console.deepSpace,
     borderTopWidth: 1,
     borderTopColor: tokens.colors.border.default,
-    paddingHorizontal: tokens.spacing[3],
+    paddingHorizontal: tokens.spacing.md,
   },
   tickerSection: {
     flex: 1,
@@ -222,27 +207,29 @@ const styles = StyleSheet.create({
     fontSize: tokens.typography.fontSize.sm,
     color: tokens.colors.text.secondary,
     fontFamily: tokens.typography.fontFamily.mono,
+    letterSpacing: 1,
   },
   tickerError: {
-    color: tokens.colors.semantic.combat,
+    color: tokens.colors.command.red,
   },
   tickerSuccess: {
-    color: tokens.colors.semantic.navigation,
+    color: tokens.colors.status.online,
   },
   tickerPlaceholder: {
     fontSize: tokens.typography.fontSize.sm,
-    color: tokens.colors.text.tertiary,
+    color: tokens.colors.text.muted,
     fontFamily: tokens.typography.fontFamily.mono,
+    letterSpacing: 1,
   },
   actionsSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing[2],
+    gap: tokens.spacing.sm,
   },
   actionButton: {
-    paddingHorizontal: tokens.spacing[4],
-    paddingVertical: tokens.spacing[2],
-    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.sm,
     minWidth: 80,
     alignItems: 'center',
   },
@@ -252,6 +239,8 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: tokens.typography.fontSize.sm,
     fontWeight: tokens.typography.fontWeight.bold,
+    fontFamily: tokens.typography.fontFamily.mono,
     textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });

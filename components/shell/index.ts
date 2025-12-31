@@ -7,4 +7,5 @@ export { CockpitShell, getShellMountCount, resetShellMountCount } from './Cockpi
 export { HeaderBar } from './HeaderBar';
 export { LeftRail } from './LeftRail';
 export { CommandBar } from './CommandBar';
+export { StatusBar } from './StatusBar';
 export { AlertOverlay } from './AlertOverlay';

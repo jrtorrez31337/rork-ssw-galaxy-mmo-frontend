@@ -5,6 +5,7 @@ import { useCockpitStore } from '@/stores/cockpitStore';
 import { HeaderBar } from './HeaderBar';
 import { LeftRail } from './LeftRail';
 import { CommandBar } from './CommandBar';
+import { StatusBar } from './StatusBar';
 import { AlertOverlay } from './AlertOverlay';
 import { ContextualPanel, PanelRouter } from '@/components/panels';
 import { FlightViewport } from '@/components/viewport/FlightViewport';
@@ -15,33 +16,30 @@ import { CombatHUD, CombatResults } from '@/components/combat';
 import { useAuth } from '@/contexts/AuthContext';
 
 /**
- * CockpitShell - Persistent Bridge Frame
+ * CockpitShell - Command Console Frame
  *
- * Per UI/UX Doctrine and Implementation Architecture:
- * - MUST NEVER REMOUNT during session
- * - Contains all persistent zones: HeaderBar, LeftRail, Viewport, CommandBar
- * - ContextualPanel slides up from bottom based on rail selection
- * - AlertOverlay renders above viewport but below true modals
- * - Children render inside the content area (sector view, maps, etc.)
- *
- * Layout (Mobile Portrait):
+ * Command Terminal aesthetic with persistent zones:
  * ┌────────────────────────────────────────────────────────┐
  * │                    HEADER BAR (56px)                   │
+ * │    Logo + Player Info + Connection Status              │
  * ├──────┬─────────────────────────────────────────────────┤
- * │      │           CONTENT AREA                          │
- * │  L   │         {children} - sector view, maps          │
- * │  E   │                                                 │
- * │  F   ├─────────────────────────────────────────────────┤
- * │  T   │       CONTEXTUAL PANEL (slide-up)               │
- * │      │    States: hidden | peek (56px) | expanded      │
- * │  R   │         <PanelRouter /> content                 │
- * │  A   │    NAV: Navigation controls                     │
- * │  I   │    OPS: Missions, trading, mining               │
- * │  L   │    TAC: Target, weapons, combat                 │
- * │      │    ENG: Systems, power, repairs                 │
- * │ 72px │    COM: Chat, factions, hailing                 │
+ * │      │           VIEWPORT                              │
+ * │  N   │         {children} - sector view, maps          │
+ * │  A   │                                                 │
+ * │  V   ├─────────────────────────────────────────────────┤
+ * │      │       CONTEXTUAL PANEL (slide-up)               │
+ * │  R   │    States: hidden | peek | expanded             │
+ * │  A   │                                                 │
+ * │  I   │                                                 │
+ * │  L   │                                                 │
+ * │      │                                                 │
+ * │ 80px │                                                 │
  * ├──────┴─────────────────────────────────────────────────┤
- * │                   COMMAND BAR (64px)                   │
+ * │                   STATUS BAR (48px)                    │
+ * │    Hull/Shield/Fuel + Location + Cargo                 │
+ * ├────────────────────────────────────────────────────────┤
+ * │                  COMMAND BAR (56px)                    │
+ * │    Ticker + Action Buttons                             │
  * └────────────────────────────────────────────────────────┘
  */
 
@@ -53,7 +51,6 @@ interface CockpitShellProps {
 let shellMountCount = 0;
 
 // Flag to track if initial navigation is complete
-// Expo Router may cause one remount during initial route resolution
 let initialNavigationComplete = false;
 
 export function CockpitShell({ children }: CockpitShellProps) {
@@ -67,36 +64,31 @@ export function CockpitShell({ children }: CockpitShellProps) {
   const { profileId } = useAuth();
 
   // Flight system integration (per Cinematic Flight Doctrine)
-  // Runs flight simulation tick and integrates with game state
   useFlightTick(shellMounted);
   useFlightIntegration({ autoLockControls: true });
 
-  // Command action handler - processes actions from CommandBar
+  // Command action handler
   useCommandHandler();
 
-  // Handler to exit flight mode and return to sector view
+  // Handler to exit flight mode
   const handleExitFlight = useCallback(() => {
     setActiveViewport('sector');
   }, [setActiveViewport]);
 
   useEffect(() => {
-    // Track mount count for debugging
     shellMountCount += 1;
     mountId.current = shellMountCount;
 
     if (__DEV__) {
       console.log(`[CockpitShell] Mounted (instance #${mountId.current})`);
 
-      // Allow one remount during initial navigation (Expo Router behavior)
-      // Only warn if shell remounts AFTER initial navigation is complete
       if (initialNavigationComplete && shellMountCount > 2) {
         console.warn(
-          `[CockpitShell] WARNING: Shell remounted after navigation! This violates doctrine. ` +
-          `Mount count: ${shellMountCount}`
+          `[CockpitShell] WARNING: Shell remounted after navigation! ` +
+            `Mount count: ${shellMountCount}`
         );
       }
 
-      // Mark initial navigation as complete after first stable mount
       if (shellMountCount === 2) {
         setTimeout(() => {
           initialNavigationComplete = true;
@@ -104,7 +96,6 @@ export function CockpitShell({ children }: CockpitShellProps) {
       }
     }
 
-    // Mark shell as mounted in store
     if (!shellMounted) {
       markShellMounted();
     }
@@ -118,17 +109,17 @@ export function CockpitShell({ children }: CockpitShellProps) {
 
   return (
     <View style={styles.shell}>
-      {/* Header Bar - Always visible */}
+      {/* Header Bar - Logo, player info, connection */}
       <HeaderBar />
 
       {/* Main content area */}
       <View style={styles.mainArea}>
-        {/* Left Rail - Always visible */}
+        {/* Left Navigation Rail */}
         <LeftRail />
 
-        {/* Primary Viewport - Children render here */}
+        {/* Primary Viewport */}
         <View style={styles.viewport}>
-          {/* Main content area - sector view, maps, flight mode, etc. */}
+          {/* Main content area */}
           <View style={styles.contentArea}>
             {activeViewport === 'flight' ? (
               <FlightViewport onExitFlight={handleExitFlight} />
@@ -144,21 +135,24 @@ export function CockpitShell({ children }: CockpitShellProps) {
             </ContextualPanel>
           )}
 
-          {/* Alert overlay sits above viewport content */}
+          {/* Alert overlay */}
           <AlertOverlay />
         </View>
       </View>
 
-      {/* Command Bar - Always visible */}
+      {/* Status Bar - Ship vitals, location, cargo */}
+      <StatusBar />
+
+      {/* Command Bar - Actions */}
       <CommandBar />
 
-      {/* Combat HUD - Shows during active combat */}
+      {/* Combat HUD */}
       {profileId && <CombatHUD playerId={profileId} />}
 
-      {/* Combat Results Modal - Shows after combat ends */}
+      {/* Combat Results Modal */}
       <CombatResults />
 
-      {/* Respawn Overlay - Shows when player ship is destroyed */}
+      {/* Respawn Overlay */}
       <RespawnOverlay />
     </View>
   );
@@ -180,7 +174,7 @@ export function resetShellMountCount(): void {
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
-    backgroundColor: tokens.colors.background.primary,
+    backgroundColor: tokens.colors.console.void,
   },
   mainArea: {
     flex: 1,
@@ -188,7 +182,7 @@ const styles = StyleSheet.create({
   },
   viewport: {
     flex: 1,
-    backgroundColor: tokens.colors.background.space,
+    backgroundColor: tokens.colors.console.nebula,
     position: 'relative',
   },
   contentArea: {

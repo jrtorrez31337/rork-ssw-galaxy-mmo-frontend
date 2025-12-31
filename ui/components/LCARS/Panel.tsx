@@ -156,10 +156,11 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
+    fontFamily: tokens.typography.fontFamily.mono,
     fontSize: tokens.typography.fontSize.sm,
     fontWeight: tokens.typography.fontWeight.bold,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
   headerRight: {
     marginLeft: tokens.spacing[2],
@@ -174,11 +175,12 @@ const styles = StyleSheet.create({
     marginBottom: tokens.spacing[4],
   },
   sectionTitle: {
+    fontFamily: tokens.typography.fontFamily.mono,
     fontSize: tokens.typography.fontSize.xs,
     fontWeight: tokens.typography.fontWeight.semibold,
-    color: tokens.colors.text.tertiary,
+    color: tokens.colors.text.muted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     marginBottom: tokens.spacing[2],
   },
   row: {
