@@ -37,9 +37,9 @@ const CONTROL_BAR_HEIGHT = 150;
  */
 function ThrottleCompact() {
   const throttle = useFlightStore((s) => s.throttle);
-  const sliderHeight = 90;
-  const thumbSize = 20;
-  const trackWidth = 36;
+  const sliderHeight = 70;
+  const thumbSize = 14;
+  const trackWidth = 24;
   const startThrottleRef = useRef(throttle.current);
 
   const panResponder = useRef(
@@ -61,21 +61,23 @@ function ThrottleCompact() {
 
   const thumbPosition = (1 - throttle.current) * (sliderHeight - thumbSize);
   const color = getThrottleColor(throttle.current);
+  const isHot = throttle.current > 0.85;
 
   return (
     <View style={styles.throttleCompact}>
-      <Text style={styles.controlLabel}>THR</Text>
       <View style={[styles.throttleTrackCompact, { height: sliderHeight, width: trackWidth }]} {...panResponder.panHandlers}>
-        <View style={[styles.throttleFillCompact, { height: `${throttle.current * 100}%`, backgroundColor: color }]} />
-        <View style={[styles.throttleThumbCompact, { top: thumbPosition, backgroundColor: color }]} />
+        {/* Red "hot" zone at top */}
+        <View style={styles.throttleHotZone} />
+        <View style={[styles.throttleFillCompact, { height: `${throttle.current * 100}%`, backgroundColor: isHot ? tokens.colors.command.red : color }]} />
+        <View style={[styles.throttleThumbCompact, { top: thumbPosition, backgroundColor: isHot ? tokens.colors.command.red : color }]} />
       </View>
-      <Text style={[styles.throttleValueCompact, { color }]}>{Math.round(throttle.current * 100)}%</Text>
+      <Text style={[styles.throttleValueCompact, { color: isHot ? tokens.colors.command.red : color }]}>{Math.round(throttle.current * 100)}%</Text>
     </View>
   );
 }
 
 /**
- * Ship vitals mini-gauges
+ * Ship vitals mini-gauges - labels under bars
  */
 function ShipVitalsCompact() {
   const { profileId } = useAuth();
@@ -105,25 +107,24 @@ function ShipVitalsCompact() {
 
   return (
     <View style={styles.vitalsContainer}>
-      <Text style={styles.controlLabel}>VITALS</Text>
-      <View style={styles.vitalsStack}>
-        <View style={styles.vitalRow}>
-          <Text style={styles.vitalLabel}>HUL</Text>
-          <View style={styles.vitalBarContainer}>
-            <View style={[styles.vitalBarFill, { width: `${hullPct}%`, backgroundColor: getHullColor() }]} />
+      <View style={styles.vitalsRow}>
+        <View style={styles.vitalItem}>
+          <View style={styles.vitalBarVertical}>
+            <View style={[styles.vitalBarFillVertical, { height: `${hullPct}%`, backgroundColor: getHullColor() }]} />
           </View>
+          <Text style={[styles.vitalLabelBelow, { color: getHullColor() }]}>HUL</Text>
         </View>
-        <View style={styles.vitalRow}>
-          <Text style={styles.vitalLabel}>SHD</Text>
-          <View style={styles.vitalBarContainer}>
-            <View style={[styles.vitalBarFill, { width: `${shieldPct}%`, backgroundColor: tokens.colors.command.blue }]} />
+        <View style={styles.vitalItem}>
+          <View style={styles.vitalBarVertical}>
+            <View style={[styles.vitalBarFillVertical, { height: `${shieldPct}%`, backgroundColor: tokens.colors.command.blue }]} />
           </View>
+          <Text style={[styles.vitalLabelBelow, { color: tokens.colors.command.blue }]}>SHD</Text>
         </View>
-        <View style={styles.vitalRow}>
-          <Text style={styles.vitalLabel}>FUL</Text>
-          <View style={styles.vitalBarContainer}>
-            <View style={[styles.vitalBarFill, { width: `${fuelPct}%`, backgroundColor: tokens.colors.operations.orange }]} />
+        <View style={styles.vitalItem}>
+          <View style={styles.vitalBarVertical}>
+            <View style={[styles.vitalBarFillVertical, { height: `${fuelPct}%`, backgroundColor: tokens.colors.operations.orange }]} />
           </View>
+          <Text style={[styles.vitalLabelBelow, { color: tokens.colors.operations.orange }]}>FUL</Text>
         </View>
       </View>
     </View>
@@ -236,14 +237,14 @@ function YawControl() {
 }
 
 /**
- * Exit button section
+ * Exit button section - compact X button
  */
 function ExitSection({ onExitFlight }: { onExitFlight?: () => void }) {
   return (
     <View style={styles.exitSection}>
       {onExitFlight && (
         <TouchableOpacity style={styles.exitButton} onPress={onExitFlight}>
-          <Text style={styles.exitButtonText}>EXIT</Text>
+          <Text style={styles.exitButtonText}>✕</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -256,8 +257,8 @@ function ExitSection({ onExitFlight }: { onExitFlight?: () => void }) {
 function LCARSControlBar({ onExitFlight }: { onExitFlight?: () => void }) {
   return (
     <View style={styles.controlBar}>
-      {/* Throttle */}
-      <View style={styles.controlSection}>
+      {/* Throttle - narrow section on left */}
+      <View style={styles.controlSectionThrottle}>
         <ThrottleCompact />
       </View>
 
@@ -265,7 +266,7 @@ function LCARSControlBar({ onExitFlight }: { onExitFlight?: () => void }) {
       <View style={styles.divider} />
 
       {/* Vitals */}
-      <View style={styles.controlSection}>
+      <View style={styles.controlSectionVitals}>
         <ShipVitalsCompact />
       </View>
 
@@ -418,6 +419,17 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingHorizontal: 4,
   },
+  controlSectionThrottle: {
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 8,
+  },
+  controlSectionVitals: {
+    width: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   controlSectionWide: {
     flex: 1.3,
     alignItems: 'center',
@@ -425,10 +437,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   controlSectionNarrow: {
-    width: 60,
+    width: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
   },
   divider: {
     width: 1,
@@ -449,61 +460,71 @@ const styles = StyleSheet.create({
   },
   throttleTrackCompact: {
     backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: tokens.colors.border.default,
     position: 'relative',
     overflow: 'hidden',
+  },
+  throttleHotZone: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '15%',
+    backgroundColor: tokens.colors.command.red + '40',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   throttleFillCompact: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    borderRadius: 18,
+    borderRadius: 12,
   },
   throttleThumbCompact: {
     position: 'absolute',
-    left: 3,
-    right: 3,
-    height: 16,
-    borderRadius: 8,
+    left: 2,
+    right: 2,
+    height: 12,
+    borderRadius: 6,
   },
   throttleValueCompact: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
     fontFamily: tokens.typography.fontFamily.mono,
-    marginTop: 4,
+    marginTop: 3,
   },
-  // Vitals
+  // Vitals - vertical bars with labels below
   vitalsContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  vitalsStack: {
-    gap: 6,
-  },
-  vitalRow: {
+  vitalsRow: {
     flexDirection: 'row',
+    gap: 8,
+  },
+  vitalItem: {
     alignItems: 'center',
-    gap: 4,
   },
-  vitalLabel: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: tokens.colors.text.muted,
-    width: 22,
-    fontFamily: tokens.typography.fontFamily.mono,
-  },
-  vitalBarContainer: {
-    width: 40,
-    height: 8,
+  vitalBarVertical: {
+    width: 12,
+    height: 60,
     backgroundColor: tokens.colors.console.hull,
-    borderRadius: 4,
+    borderRadius: 6,
     overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
-  vitalBarFill: {
-    height: '100%',
-    borderRadius: 4,
+  vitalBarFillVertical: {
+    width: '100%',
+    borderRadius: 6,
+  },
+  vitalLabelBelow: {
+    fontSize: 7,
+    fontWeight: '700',
+    fontFamily: tokens.typography.fontFamily.mono,
+    marginTop: 3,
   },
   // Attitude compact
   attitudeCompact: {
@@ -595,15 +616,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   exitButton: {
+    width: 32,
+    height: 32,
     backgroundColor: tokens.colors.command.red,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 6,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   exitButtonText: {
-    fontSize: 11,
+    fontSize: 16,
     fontWeight: '700',
     color: tokens.colors.text.inverse,
-    letterSpacing: 1,
   },
 });
