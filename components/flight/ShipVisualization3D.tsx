@@ -22,8 +22,8 @@ import { useFlightStore } from '@/stores/flightStore';
  * Industrial/military aesthetic with:
  * - Hard angles and panel lines
  * - Weathered metallic surfaces
- * - Mechanical details
- * - Gritty color palette
+ * - Prominent engine housings with visible thrusters
+ * - Throttle-responsive engine flames
  */
 
 interface ShipVisualization3DProps {
@@ -71,7 +71,9 @@ const ENGINE_COLORS = {
   core: '#ffffff',
   hot: '#ffcc00',
   plasma: '#ff6600',
-  exhaust: '#ff330044',
+  exhaust: '#ff330066',
+  nozzle: '#222233',
+  nozzleRim: '#444466',
 };
 
 /**
@@ -125,7 +127,54 @@ function Starfield({ width, height, pitch, yaw }: {
 }
 
 /**
+ * Engine Nozzle - visible thruster component
+ */
+function EngineNozzle({ cx, cy, width, height, scale = 1 }: {
+  cx: number;
+  cy: number;
+  width: number;
+  height: number;
+  scale?: number;
+}) {
+  const w = width * scale;
+  const h = height * scale;
+
+  return (
+    <G>
+      {/* Nozzle outer rim */}
+      <Ellipse
+        cx={cx}
+        cy={cy}
+        rx={w / 2}
+        ry={h / 2 * 0.4}
+        fill={ENGINE_COLORS.nozzleRim}
+        stroke={ENGINE_COLORS.nozzle}
+        strokeWidth={1}
+      />
+      {/* Nozzle inner */}
+      <Ellipse
+        cx={cx}
+        cy={cy}
+        rx={w / 2 * 0.7}
+        ry={h / 2 * 0.25}
+        fill={ENGINE_COLORS.nozzle}
+      />
+      {/* Nozzle glow ring (always slightly visible) */}
+      <Ellipse
+        cx={cx}
+        cy={cy}
+        rx={w / 2 * 0.5}
+        ry={h / 2 * 0.15}
+        fill={ENGINE_COLORS.plasma}
+        opacity={0.3}
+      />
+    </G>
+  );
+}
+
+/**
  * Engine exhaust - industrial plasma burn
+ * Positioned to emit FROM the nozzle center
  */
 function EngineExhaust({ cx, cy, throttle, scale = 1, wide = false }: {
   cx: number;
@@ -136,49 +185,50 @@ function EngineExhaust({ cx, cy, throttle, scale = 1, wide = false }: {
 }) {
   if (throttle < 0.03) return null;
 
-  const len = (12 + throttle * 35) * scale;
-  const w = wide ? (8 + throttle * 12) * scale : (4 + throttle * 6) * scale;
+  const len = (15 + throttle * 40) * scale;
+  const w = wide ? (10 + throttle * 14) * scale : (5 + throttle * 8) * scale;
 
   return (
     <G>
-      {/* Exhaust plume */}
+      {/* Exhaust plume - outer glow */}
       <Polygon
         points={`
           ${cx - w},${cy}
           ${cx + w},${cy}
-          ${cx + w * 0.3},${cy + len}
-          ${cx - w * 0.3},${cy + len}
+          ${cx + w * 0.2},${cy + len}
+          ${cx - w * 0.2},${cy + len}
         `}
         fill={ENGINE_COLORS.exhaust}
       />
       {/* Plasma core */}
       <Polygon
         points={`
-          ${cx - w * 0.6},${cy}
-          ${cx + w * 0.6},${cy}
-          ${cx + w * 0.15},${cy + len * 0.7}
-          ${cx - w * 0.15},${cy + len * 0.7}
+          ${cx - w * 0.65},${cy}
+          ${cx + w * 0.65},${cy}
+          ${cx + w * 0.1},${cy + len * 0.75}
+          ${cx - w * 0.1},${cy + len * 0.75}
         `}
         fill={ENGINE_COLORS.plasma}
-        opacity={0.6 + throttle * 0.4}
+        opacity={0.5 + throttle * 0.5}
       />
       {/* Hot center */}
       <Polygon
         points={`
-          ${cx - w * 0.25},${cy}
-          ${cx + w * 0.25},${cy}
-          ${cx},${cy + len * 0.4}
+          ${cx - w * 0.35},${cy}
+          ${cx + w * 0.35},${cy}
+          ${cx},${cy + len * 0.5}
         `}
         fill={ENGINE_COLORS.hot}
-        opacity={0.8}
+        opacity={0.7 + throttle * 0.3}
       />
-      {/* White hot tip */}
-      <Circle
+      {/* White hot core */}
+      <Ellipse
         cx={cx}
-        cy={cy + 2 * scale}
-        r={w * 0.2}
+        cy={cy + 3 * scale}
+        rx={w * 0.25}
+        ry={len * 0.08}
         fill={ENGINE_COLORS.core}
-        opacity={0.9}
+        opacity={0.85}
       />
     </G>
   );
@@ -202,6 +252,7 @@ function PanelLine({ x1, y1, x2, y2, color }: {
 
 /**
  * Scout - Fast recon vessel, angular stealth design
+ * Single large main engine
  */
 function ScoutShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.scout;
@@ -215,6 +266,10 @@ function ScoutShip({ colors, roll, pitch, throttle, size }: {
   const rollAngle = roll * 35;
   const cx = 50 * s;
 
+  // Engine position - centered, at bottom of hull
+  const engineX = 50 * s;
+  const engineY = (82 + pY * 6) * s;
+
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
       <Defs>
@@ -225,8 +280,8 @@ function ScoutShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Engine */}
-      <EngineExhaust cx={cx} cy={(78 + pY * 8) * s} throttle={throttle} scale={s} />
+      {/* Engine exhaust - behind ship */}
+      <EngineExhaust cx={engineX} cy={engineY} throttle={throttle} scale={s * 1.2} />
 
       {/* Main hull - angular wedge */}
       <Polygon
@@ -289,20 +344,23 @@ function ScoutShip({ colors, roll, pitch, throttle, size }: {
         opacity={0.9}
       />
 
-      {/* Thruster housings */}
+      {/* Main engine housing - large and prominent */}
       <Rect
-        x={(42) * s} y={(72 + pY * 5) * s}
-        width={16 * s} height={8 * s}
+        x={(38) * s} y={(70 + pY * 5) * s}
+        width={24 * s} height={12 * s}
         fill={colors.panel}
         stroke={colors.hull}
-        strokeWidth={0.5}
+        strokeWidth={1}
       />
+      {/* Engine nozzle */}
+      <EngineNozzle cx={engineX} cy={engineY} width={18} height={10} scale={s} />
     </G>
   );
 }
 
 /**
  * Fighter - Heavy combat vessel, brutal angular design
+ * Twin engines
  */
 function FighterShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.fighter;
@@ -316,6 +374,11 @@ function FighterShip({ colors, roll, pitch, throttle, size }: {
   const rollAngle = roll * 38;
   const cx = 50 * s;
 
+  // Twin engine positions
+  const leftEngineX = 35 * s;
+  const rightEngineX = 65 * s;
+  const engineY = (86 + pY * 6) * s;
+
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
       <Defs>
@@ -326,9 +389,9 @@ function FighterShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Twin engines */}
-      <EngineExhaust cx={(35) * s} cy={(82 + pY * 6) * s} throttle={throttle} scale={s * 0.9} />
-      <EngineExhaust cx={(65) * s} cy={(82 + pY * 6) * s} throttle={throttle} scale={s * 0.9} />
+      {/* Twin engine exhausts - behind ship */}
+      <EngineExhaust cx={leftEngineX} cy={engineY} throttle={throttle} scale={s * 1.1} />
+      <EngineExhaust cx={rightEngineX} cy={engineY} throttle={throttle} scale={s * 1.1} />
 
       {/* Main hull - aggressive angular */}
       <Polygon
@@ -406,15 +469,20 @@ function FighterShip({ colors, roll, pitch, throttle, size }: {
         strokeWidth={1}
       />
 
-      {/* Engine nacelles */}
-      <Rect x={28*s} y={(72+pY*5)*s} width={14*s} height={10*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
-      <Rect x={58*s} y={(72+pY*5)*s} width={14*s} height={10*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      {/* Left engine nacelle - large and prominent */}
+      <Rect x={24*s} y={(70+pY*5)*s} width={22*s} height={16*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
+      <EngineNozzle cx={leftEngineX} cy={engineY} width={16} height={10} scale={s} />
+
+      {/* Right engine nacelle - large and prominent */}
+      <Rect x={54*s} y={(70+pY*5)*s} width={22*s} height={16*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
+      <EngineNozzle cx={rightEngineX} cy={engineY} width={16} height={10} scale={s} />
     </G>
   );
 }
 
 /**
  * Trader - Industrial cargo hauler, blocky utilitarian
+ * Triple engine array
  */
 function TraderShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.trader;
@@ -428,6 +496,12 @@ function TraderShip({ colors, roll, pitch, throttle, size }: {
   const rollAngle = roll * 25;
   const cx = 50 * s;
 
+  // Triple engine positions
+  const leftEngineX = 28 * s;
+  const centerEngineX = 50 * s;
+  const rightEngineX = 72 * s;
+  const engineY = (90 + pY * 5) * s;
+
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
       <Defs>
@@ -438,10 +512,10 @@ function TraderShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Engine array */}
-      <EngineExhaust cx={(28) * s} cy={(85 + pY * 5) * s} throttle={throttle} scale={s * 0.7} wide />
-      <EngineExhaust cx={(50) * s} cy={(87 + pY * 5) * s} throttle={throttle} scale={s * 0.8} wide />
-      <EngineExhaust cx={(72) * s} cy={(85 + pY * 5) * s} throttle={throttle} scale={s * 0.7} wide />
+      {/* Triple engine exhausts - behind ship */}
+      <EngineExhaust cx={leftEngineX} cy={engineY} throttle={throttle} scale={s * 0.9} wide />
+      <EngineExhaust cx={centerEngineX} cy={engineY} throttle={throttle} scale={s * 1.1} wide />
+      <EngineExhaust cx={rightEngineX} cy={engineY} throttle={throttle} scale={s * 0.9} wide />
 
       {/* Main cargo hull - blocky industrial */}
       <Polygon
@@ -488,14 +562,24 @@ function TraderShip({ colors, roll, pitch, throttle, size }: {
       <Line x1={(18-pY*4)*s} y1={(35-pY*5)*s} x2={(18-pY*4)*s} y2={(70+pY*4)*s} stroke={colors.plate} strokeWidth={2} />
       <Line x1={(82+pY*4)*s} y1={(35-pY*5)*s} x2={(82+pY*4)*s} y2={(70+pY*4)*s} stroke={colors.plate} strokeWidth={2} />
 
-      {/* Engine housing */}
-      <Rect x={(18-pY*3)*s} y={(75+pY*5)*s} width={(64+pY*6)*s} height={10*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      {/* Engine housing - large triple-engine bay */}
+      <Rect x={(16-pY*3)*s} y={(75+pY*5)*s} width={(68+pY*6)*s} height={15*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
+
+      {/* Engine nozzles */}
+      <EngineNozzle cx={leftEngineX} cy={engineY} width={14} height={10} scale={s} />
+      <EngineNozzle cx={centerEngineX} cy={engineY} width={18} height={12} scale={s} />
+      <EngineNozzle cx={rightEngineX} cy={engineY} width={14} height={10} scale={s} />
+
+      {/* Engine dividers */}
+      <Line x1={38*s} y1={(76+pY*5)*s} x2={38*s} y2={(89+pY*5)*s} stroke={colors.hull} strokeWidth={2} />
+      <Line x1={62*s} y1={(76+pY*5)*s} x2={62*s} y2={(89+pY*5)*s} stroke={colors.hull} strokeWidth={2} />
     </G>
   );
 }
 
 /**
  * Explorer - Long-range science vessel, functional asymmetric
+ * Single large main engine + maneuvering thrusters
  */
 function ExplorerShip({ colors, roll, pitch, throttle, size }: {
   colors: typeof SHIP_COLORS.explorer;
@@ -509,6 +593,10 @@ function ExplorerShip({ colors, roll, pitch, throttle, size }: {
   const rollAngle = roll * 32;
   const cx = 50 * s;
 
+  // Main engine position
+  const engineX = 50 * s;
+  const engineY = (88 + pY * 6) * s;
+
   return (
     <G rotation={rollAngle} origin={`${cx}, ${50 * s}`}>
       <Defs>
@@ -519,8 +607,8 @@ function ExplorerShip({ colors, roll, pitch, throttle, size }: {
         </LinearGradient>
       </Defs>
 
-      {/* Main engine */}
-      <EngineExhaust cx={cx} cy={(85 + pY * 6) * s} throttle={throttle} scale={s} />
+      {/* Main engine exhaust - behind ship */}
+      <EngineExhaust cx={engineX} cy={engineY} throttle={throttle} scale={s * 1.3} />
 
       {/* Main hull - elongated */}
       <Polygon
@@ -637,8 +725,15 @@ function ExplorerShip({ colors, roll, pitch, throttle, size }: {
       <PanelLine x1={50*s} y1={(35-pY*5)*s} x2={(65+pY*4)*s} y2={(60+pY*3)*s} color={colors.panel} />
       <PanelLine x1={50*s} y1={(35-pY*5)*s} x2={(35-pY*4)*s} y2={(60+pY*3)*s} color={colors.panel} />
 
-      {/* Engine housing */}
-      <Rect x={(38-pY*3)*s} y={(75+pY*5)*s} width={(24+pY*6)*s} height={8*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      {/* Main engine housing - large and prominent */}
+      <Rect x={(34-pY*3)*s} y={(73+pY*5)*s} width={(32+pY*6)*s} height={15*s} fill={colors.panel} stroke={colors.hull} strokeWidth={1} />
+
+      {/* Engine nozzle */}
+      <EngineNozzle cx={engineX} cy={engineY} width={22} height={12} scale={s} />
+
+      {/* Maneuvering thruster pods on wings */}
+      <Circle cx={12*s} cy={(67+pY*4)*s} r={4*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
+      <Circle cx={88*s} cy={(67+pY*4)*s} r={4*s} fill={colors.panel} stroke={colors.hull} strokeWidth={0.5} />
     </G>
   );
 }
