@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { tokens } from '@/ui/theme';
 import { useFlightStore } from '@/stores/flightStore';
-import { ShipVisualization3DNew } from '@/components/flight/ShipVisualization3DNew';
+import { ShipVisualization3D } from '@/components/flight/ShipVisualization3D';
 import { computeFlightMetrics, getSpeedStatus, getThrottleColor } from '@/lib/flight/metrics';
 
 /**
@@ -305,9 +305,9 @@ export function FlightViewport({ onExitFlight }: FlightViewportProps) {
 
   return (
     <View style={styles.container}>
-      {/* 3D Ship visualization with integrated starfield */}
+      {/* Ship visualization with integrated starfield */}
       <View style={styles.shipContainer3D}>
-        <ShipVisualization3DNew
+        <ShipVisualization3D
           shipType={shipType}
           size={{ width: SCREEN_WIDTH - 140, height: SCREEN_HEIGHT * 0.5 }}
         />

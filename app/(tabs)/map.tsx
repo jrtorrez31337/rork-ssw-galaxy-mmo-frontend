@@ -24,7 +24,6 @@ import NPCList from '@/components/npc/NPCList';
 import CombatHUD from '@/components/combat/CombatHUD';
 import CombatResults from '@/components/combat/CombatResults';
 import LootNotification from '@/components/loot/LootNotification';
-import { QuickActionHUD } from '@/components/hud/QuickActionHUD';
 import { JumpPanel } from '@/components/movement/JumpPanel';
 import { DockingPanel } from '@/components/movement/DockingPanel';
 import { ChatPanel } from '@/components/chat/ChatPanel';
@@ -337,23 +336,6 @@ export default function MapTab() {
               setRadarExpanded(false);
               setJumpPanelOpen(true);
             }}
-          />
-
-          {/* Quick Action HUD */}
-          <QuickActionHUD
-            onJumpPress={() => setJumpPanelOpen(true)}
-            onDockPress={() => setDockPanelOpen(true)}
-            onCombatPress={() => {
-              if (selectedNPC) {
-                handleInitiateCombat(selectedNPC.entity_id);
-              } else {
-                Alert.alert('No Target', 'Select an NPC to initiate combat');
-              }
-            }}
-            onChatPress={() => setChatPanelOpen(true)}
-            jumpDisabled={!currentShip || currentShip.in_combat || isInTransit}
-            dockDisabled={!currentShip || currentShip.in_combat || isInTransit}
-            combatDisabled={!currentShip || isInCombat || isInTransit || npcs.length === 0}
           />
 
           {/* Jump Panel */}
