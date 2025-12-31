@@ -14,7 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { shipApi } from '@/api/ships';
 import { ShipStats, ShipType } from '@/types/api';
 import Colors from '@/constants/colors';
-import ShipPreview from '@/components/ShipPreview';
+import { ShipPreview3D } from '@/components/ShipPreview3D';
 
 const TOTAL_POINTS = 30;
 const MIN_STAT = 1;
@@ -145,7 +145,7 @@ export default function ShipCustomizeScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.previewSection}>
-          <ShipPreview shipType={shipType} stats={stats} />
+          <ShipPreview3D shipType={shipType} height={200} />
         </View>
 
         <View style={styles.section}>
