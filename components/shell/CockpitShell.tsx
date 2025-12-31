@@ -1,12 +1,12 @@
-import React, { useEffect, useRef, ReactNode, useCallback } from 'react';
+import React, { useEffect, useRef, ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
 import { HeaderBar } from './HeaderBar';
 import { LeftRail } from './LeftRail';
 import { AlertOverlay } from './AlertOverlay';
-import { ContextualPanel, PanelRouter } from '@/components/panels';
-import { FlightViewport, FlightLCARSBar } from '@/components/viewport/FlightViewport';
+import { UnifiedLCARSBar } from '@/components/lcars-bar';
+import { FlightViewport } from '@/components/viewport/FlightViewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 import { useCommandHandler } from '@/hooks/useCommandHandler';
 import { RespawnOverlay } from '@/components/respawn/RespawnOverlay';
@@ -21,21 +21,25 @@ import { useAuth } from '@/contexts/AuthContext';
  * │                    HEADER BAR (56px)                   │
  * │    Logo + Player Info + Connection Status              │
  * ├──────┬─────────────────────────────────────────────────┤
- * │      │           VIEWPORT                              │
- * │  N   │         {children} - sector view, maps          │
- * │  A   │                                                 │
- * │  V   ├─────────────────────────────────────────────────┤
- * │      │       CONTEXTUAL PANEL (slide-up)               │
- * │  R   │    States: hidden | peek | expanded             │
+ * │      │                                                 │
+ * │  L   │           VIEWPORT                              │
+ * │  E   │         {children} - sector view, maps          │
+ * │  F   │                                                 │
+ * │  T   │                                                 │
+ * │      │                                                 │
+ * │  R   │                                                 │
  * │  A   │                                                 │
  * │  I   │                                                 │
  * │  L   │                                                 │
- * │      │                                                 │
  * │ 80px │                                                 │
- * └──────┴─────────────────────────────────────────────────┘
+ * ├──────┴─────────────────────────────────────────────────┤
+ * │       UNIFIED LCARS BAR (240px) - FULL WIDTH           │
+ * │    Content changes based on rail selection             │
+ * │    Top border color matches active rail                │
+ * └────────────────────────────────────────────────────────┘
  *
- * Note: StatusBar and CommandBar removed - ship vitals and
- * flight controls integrated into FlightViewport LCARS bar
+ * The UnifiedLCARSBar replaces the old popup ContextualPanel.
+ * Rail selection (NAV/FLT/OPS/TAC/ENG/COM) switches bar content.
  */
 
 interface CockpitShellProps {
@@ -52,7 +56,6 @@ export function CockpitShell({ children }: CockpitShellProps) {
   const markShellMounted = useCockpitStore((s) => s.markShellMounted);
   const shellMounted = useCockpitStore((s) => s.shellMounted);
   const activeViewport = useCockpitStore((s) => s.activeViewport);
-  const setActiveViewport = useCockpitStore((s) => s.setActiveViewport);
   const mountId = useRef<number | null>(null);
 
   // Get player ID for combat HUD
@@ -64,11 +67,6 @@ export function CockpitShell({ children }: CockpitShellProps) {
 
   // Command action handler
   useCommandHandler();
-
-  // Handler to exit flight mode
-  const handleExitFlight = useCallback(() => {
-    setActiveViewport('sector');
-  }, [setActiveViewport]);
 
   useEffect(() => {
     shellMountCount += 1;
@@ -107,38 +105,28 @@ export function CockpitShell({ children }: CockpitShellProps) {
       {/* Header Bar - Logo, player info, connection */}
       <HeaderBar />
 
-      {/* Main content area */}
-      <View style={styles.mainArea}>
+      {/* Upper area: LeftRail + Viewport */}
+      <View style={styles.upperArea}>
         {/* Left Navigation Rail */}
         <LeftRail />
 
         {/* Primary Viewport */}
         <View style={styles.viewport}>
-          {/* Main content area */}
           <View style={styles.contentArea}>
             {activeViewport === 'flight' ? (
-              <FlightViewport onExitFlight={handleExitFlight} />
+              <FlightViewport />
             ) : (
               children
             )}
           </View>
-
-          {/* Contextual Panel - slides up from bottom (hidden in flight mode) */}
-          {activeViewport !== 'flight' && (
-            <ContextualPanel>
-              <PanelRouter />
-            </ContextualPanel>
-          )}
 
           {/* Alert overlay */}
           <AlertOverlay />
         </View>
       </View>
 
-      {/* Flight LCARS Bar - rendered at shell level for full width */}
-      {activeViewport === 'flight' && (
-        <FlightLCARSBar onExitFlight={handleExitFlight} />
-      )}
+      {/* Unified LCARS Bar - full width at bottom */}
+      <UnifiedLCARSBar />
 
       {/* Combat HUD */}
       {profileId && <CombatHUD playerId={profileId} />}
@@ -170,14 +158,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.colors.console.void,
   },
-  mainArea: {
+  upperArea: {
     flex: 1,
     flexDirection: 'row',
   },
   viewport: {
     flex: 1,
     backgroundColor: tokens.colors.console.nebula,
-    position: 'relative',
   },
   contentArea: {
     flex: 1,
