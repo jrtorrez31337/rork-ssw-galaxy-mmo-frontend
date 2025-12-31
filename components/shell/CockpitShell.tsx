@@ -27,13 +27,16 @@ import { useAuth } from '@/contexts/AuthContext';
  * │  F   │                                                 │
  * │  T   │                                                 │
  * │      │                                                 │
- * │  R   ├─────────────────────────────────────────────────┤
- * │  A   │       UNIFIED LCARS BAR (240px)                 │
- * │  I   │    Content changes based on rail selection      │
- * │  L   │    Top border color matches active rail         │
- * │      │                                                 │
+ * │  R   │                                                 │
+ * │  A   │                                                 │
+ * │  I   │                                                 │
+ * │  L   │                                                 │
  * │ 80px │                                                 │
- * └──────┴─────────────────────────────────────────────────┘
+ * ├──────┴─────────────────────────────────────────────────┤
+ * │       UNIFIED LCARS BAR (240px) - FULL WIDTH           │
+ * │    Content changes based on rail selection             │
+ * │    Top border color matches active rail                │
+ * └────────────────────────────────────────────────────────┘
  *
  * The UnifiedLCARSBar replaces the old popup ContextualPanel.
  * Rail selection (NAV/FLT/OPS/TAC/ENG/COM) switches bar content.
@@ -102,14 +105,13 @@ export function CockpitShell({ children }: CockpitShellProps) {
       {/* Header Bar - Logo, player info, connection */}
       <HeaderBar />
 
-      {/* Main content area */}
-      <View style={styles.mainArea}>
+      {/* Upper area: LeftRail + Viewport */}
+      <View style={styles.upperArea}>
         {/* Left Navigation Rail */}
         <LeftRail />
 
         {/* Primary Viewport */}
         <View style={styles.viewport}>
-          {/* Main content area - padded to avoid LCARS bar */}
           <View style={styles.contentArea}>
             {activeViewport === 'flight' ? (
               <FlightViewport />
@@ -118,13 +120,13 @@ export function CockpitShell({ children }: CockpitShellProps) {
             )}
           </View>
 
-          {/* Unified LCARS Bar - always visible, content changes by rail */}
-          <UnifiedLCARSBar />
-
           {/* Alert overlay */}
           <AlertOverlay />
         </View>
       </View>
+
+      {/* Unified LCARS Bar - full width at bottom */}
+      <UnifiedLCARSBar />
 
       {/* Combat HUD */}
       {profileId && <CombatHUD playerId={profileId} />}
@@ -156,7 +158,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.colors.console.void,
   },
-  mainArea: {
+  upperArea: {
     flex: 1,
     flexDirection: 'row',
   },
