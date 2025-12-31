@@ -6,6 +6,7 @@ import {
   Wrench,
   Radio,
   Crosshair,
+  Rocket,
   LucideIcon,
 } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
@@ -83,6 +84,7 @@ export function LeftRail() {
 
   const railItems: { system: RailSystem; Icon: LucideIcon; label: string }[] = [
     { system: 'NAV', Icon: Navigation, label: 'NAV' },
+    { system: 'FLT', Icon: Rocket, label: 'FLT' },
     { system: 'OPS', Icon: Target, label: 'OPS' },
     { system: 'TAC', Icon: Crosshair, label: 'TAC' },
     { system: 'ENG', Icon: Wrench, label: 'ENG' },
