@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useMemo } from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -6,78 +6,23 @@ import {
   Dimensions,
   TouchableOpacity,
   PanResponder,
-  GestureResponderEvent,
-  PanResponderGestureState,
 } from 'react-native';
-import Svg, { Circle, Line, G } from 'react-native-svg';
 import { tokens } from '@/ui/theme';
 import { useFlightStore } from '@/stores/flightStore';
-import { ShipVisualization3D } from '@/components/flight/ShipVisualization3D';
+import { ShipVisualization3DNew } from '@/components/flight/ShipVisualization3DNew';
 import { computeFlightMetrics, getSpeedStatus, getThrottleColor } from '@/lib/flight/metrics';
 
 /**
  * FlightViewport - Dedicated flight mode viewport
  *
- * Replaces sector view when in flight mode, showing:
- * - 2D ship visualization responding to attitude
- * - Starfield background with parallax based on movement
- * - Flight control inputs (throttle slider, attitude control)
+ * Shows:
+ * - Animated ship silhouette responding to attitude (pitch/roll/yaw)
+ * - Parallax starfield background
+ * - Flight control inputs (throttle slider, attitude joystick)
  * - HUD overlay with flight data
  */
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-/**
- * Starfield background with parallax effect
- */
-function Starfield({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: number }) {
-  // Generate static star positions (memoized)
-  const stars = useMemo(() => {
-    const result = [];
-    for (let i = 0; i < 100; i++) {
-      result.push({
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        size: Math.random() * 2 + 0.5,
-        brightness: Math.random() * 0.5 + 0.3,
-        layer: Math.floor(Math.random() * 3), // 0, 1, 2 for parallax depth
-      });
-    }
-    return result;
-  }, []);
-
-  // Parallax offset based on attitude and speed
-  const getParallaxOffset = (layer: number) => {
-    const factor = (layer + 1) * 0.3;
-    return {
-      x: yaw * 10 * factor + speed * yaw * 2,
-      y: pitch * 10 * factor + speed * 0.5,
-    };
-  };
-
-  return (
-    <View style={StyleSheet.absoluteFill}>
-      <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {stars.map((star, i) => {
-          const offset = getParallaxOffset(star.layer);
-          const x = ((star.x + offset.x) % 100 + 100) % 100;
-          const y = ((star.y + offset.y) % 100 + 100) % 100;
-
-          return (
-            <Circle
-              key={i}
-              cx={x}
-              cy={y}
-              r={star.size}
-              fill={tokens.colors.text.primary}
-              opacity={star.brightness}
-            />
-          );
-        })}
-      </Svg>
-    </View>
-  );
-}
 
 /**
  * Throttle slider control
@@ -85,20 +30,35 @@ function Starfield({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: n
 function ThrottleControl() {
   const throttle = useFlightStore((s) => s.throttle);
   const setThrottle = useFlightStore((s) => s.setThrottle);
-  const controlsLocked = useFlightStore((s) => s.controlsLocked);
 
-  const sliderHeight = 200;
-  const thumbSize = 24;
+  const sliderHeight = 240;
+  const thumbSize = 32;
+  const trackWidth = 56;
 
+  // Track starting throttle on touch
+  const startThrottleRef = useRef(throttle.current);
+
+  // Use getState() inside callbacks to avoid stale closures on iOS
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !controlsLocked,
-      onMoveShouldSetPanResponder: () => !controlsLocked,
-      onPanResponderGrant: () => {},
+      onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onStartShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onPanResponderGrant: () => {
+        startThrottleRef.current = useFlightStore.getState().throttle.current;
+      },
       onPanResponderMove: (_, gestureState) => {
-        // Convert Y position to throttle (inverted - top is 100%)
-        const newThrottle = 1 - Math.max(0, Math.min(1, (gestureState.moveY - 100) / sliderHeight));
-        setThrottle(newThrottle);
+        // Use relative movement (dy) instead of absolute position
+        const deltaThrottle = -gestureState.dy / sliderHeight;
+        const newThrottle = Math.max(0, Math.min(1, startThrottleRef.current + deltaThrottle));
+        useFlightStore.getState().setThrottle(newThrottle);
+      },
+      onPanResponderRelease: () => {
+        // Throttle maintains position on release (no reset)
+      },
+      onPanResponderTerminate: () => {
+        // Throttle maintains position on terminate (no reset)
       },
     })
   ).current;
@@ -109,8 +69,7 @@ function ThrottleControl() {
   return (
     <View style={styles.throttleContainer}>
       <Text style={styles.throttleLabel}>THR</Text>
-      <View style={[styles.throttleTrack, { height: sliderHeight }]} {...panResponder.panHandlers}>
-        {/* Fill bar */}
+      <View style={[styles.throttleTrack, { height: sliderHeight, width: trackWidth }]} {...panResponder.panHandlers}>
         <View
           style={[
             styles.throttleFill,
@@ -120,17 +79,16 @@ function ThrottleControl() {
             },
           ]}
         />
-        {/* Thumb */}
         <View
           style={[
             styles.throttleThumb,
             {
               top: thumbPosition,
+              height: thumbSize,
               backgroundColor: color,
             },
           ]}
         />
-        {/* Tick marks */}
         {[0, 25, 50, 75, 100].map((tick) => (
           <View
             key={tick}
@@ -152,51 +110,48 @@ function ThrottleControl() {
  * Attitude control stick (virtual joystick)
  */
 function AttitudeControl() {
-  const setPitch = useFlightStore((s) => s.setPitch);
-  const setRoll = useFlightStore((s) => s.setRoll);
-  const setYaw = useFlightStore((s) => s.setYaw);
   const attitude = useFlightStore((s) => s.attitude);
-  const controlsLocked = useFlightStore((s) => s.controlsLocked);
   const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
 
-  const stickSize = 150;
-  const thumbSize = 40;
+  const stickSize = 180;
+  const thumbSize = 50;
   const maxOffset = (stickSize - thumbSize) / 2;
 
-  const centerRef = useRef({ x: 0, y: 0 });
-
+  // Use getState() inside callbacks to avoid stale closures on iOS
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !controlsLocked,
-      onMoveShouldSetPanResponder: () => !controlsLocked,
-      onPanResponderGrant: (evt) => {
-        centerRef.current = {
-          x: evt.nativeEvent.locationX,
-          y: evt.nativeEvent.locationY,
-        };
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        // Calculate offset from center
+      onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onStartShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onPanResponderGrant: () => {},
+      onPanResponderMove: (_, gestureState) => {
+        const store = useFlightStore.getState();
         const offsetX = gestureState.dx;
         const offsetY = gestureState.dy;
 
-        // Normalize to -1 to 1
         const roll = Math.max(-1, Math.min(1, offsetX / maxOffset));
-        const pitch = Math.max(-1, Math.min(1, -offsetY / maxOffset)); // Inverted Y
+        const pitch = Math.max(-1, Math.min(1, -offsetY / maxOffset));
 
-        setRoll(roll);
-        setPitch(pitch);
+        store.setRoll(roll);
+        store.setPitch(pitch);
 
-        // If axis coupling is off, horizontal also affects yaw slightly
-        if (!axisCouplingEnabled) {
-          setYaw(roll * 0.5);
+        if (!store.axisCouplingEnabled) {
+          store.setYaw(roll * 0.5);
         }
       },
       onPanResponderRelease: () => {
-        // Return to center
-        setRoll(0);
-        setPitch(0);
-        setYaw(0);
+        const store = useFlightStore.getState();
+        store.setRoll(0);
+        store.setPitch(0);
+        store.setYaw(0);
+      },
+      onPanResponderTerminate: () => {
+        // Also reset on terminate (iOS can terminate gestures)
+        const store = useFlightStore.getState();
+        store.setRoll(0);
+        store.setPitch(0);
+        store.setYaw(0);
       },
     })
   ).current;
@@ -212,35 +167,11 @@ function AttitudeControl() {
         {...panResponder.panHandlers}
       >
         {/* Grid lines */}
-        <Svg width={stickSize} height={stickSize} style={StyleSheet.absoluteFill}>
-          <Line
-            x1={stickSize / 2}
-            y1={0}
-            x2={stickSize / 2}
-            y2={stickSize}
-            stroke={tokens.colors.text.tertiary}
-            strokeWidth={1}
-            opacity={0.3}
-          />
-          <Line
-            x1={0}
-            y1={stickSize / 2}
-            x2={stickSize}
-            y2={stickSize / 2}
-            stroke={tokens.colors.text.tertiary}
-            strokeWidth={1}
-            opacity={0.3}
-          />
-          <Circle
-            cx={stickSize / 2}
-            cy={stickSize / 2}
-            r={maxOffset}
-            fill="none"
-            stroke={tokens.colors.text.tertiary}
-            strokeWidth={1}
-            opacity={0.3}
-          />
-        </Svg>
+        <View style={styles.attitudeGrid}>
+          <View style={styles.attitudeHLine} />
+          <View style={styles.attitudeVLine} />
+          <View style={styles.attitudeCircle} />
+        </View>
 
         {/* Thumb */}
         <View
@@ -268,44 +199,55 @@ function AttitudeControl() {
 }
 
 /**
- * Yaw pedal control (for direct yaw when not using coupling)
+ * Yaw pedal control
  */
 function YawControl() {
-  const setYaw = useFlightStore((s) => s.setYaw);
   const attitude = useFlightStore((s) => s.attitude);
-  const controlsLocked = useFlightStore((s) => s.controlsLocked);
   const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
 
-  // Hide if axis coupling is enabled (yaw derived from roll)
-  if (axisCouplingEnabled) return null;
+  const sliderWidth = 160;
+  const sliderHeight = 44;
 
-  const sliderWidth = 120;
-
+  // Use getState() inside callbacks to avoid stale closures on iOS
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !controlsLocked,
-      onMoveShouldSetPanResponder: () => !controlsLocked,
+      onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onStartShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
       onPanResponderMove: (_, gestureState) => {
         const yaw = Math.max(-1, Math.min(1, gestureState.dx / (sliderWidth / 2)));
-        setYaw(yaw);
+        useFlightStore.getState().setYaw(yaw);
       },
       onPanResponderRelease: () => {
-        setYaw(0);
+        useFlightStore.getState().setYaw(0);
+      },
+      onPanResponderTerminate: () => {
+        // Also reset on terminate (iOS can terminate gestures)
+        useFlightStore.getState().setYaw(0);
       },
     })
   ).current;
 
-  const thumbOffset = attitude.yaw.smoothed * (sliderWidth / 2 - 15);
+  // Early return AFTER hooks and refs (React rules of hooks)
+  if (axisCouplingEnabled) return null;
+
+  const thumbWidth = 40;
+  const thumbOffset = attitude.yaw.smoothed * (sliderWidth / 2 - thumbWidth / 2);
 
   return (
     <View style={styles.yawContainer}>
       <Text style={styles.yawLabel}>YAW</Text>
-      <View style={[styles.yawTrack, { width: sliderWidth }]} {...panResponder.panHandlers}>
+      <View style={[styles.yawTrack, { width: sliderWidth, height: sliderHeight }]} {...panResponder.panHandlers}>
         <View style={styles.yawCenter} />
         <View
           style={[
             styles.yawThumb,
-            { left: sliderWidth / 2 - 15 + thumbOffset },
+            {
+              left: sliderWidth / 2 - thumbWidth / 2 + thumbOffset,
+              width: thumbWidth,
+              height: sliderHeight - 8,
+            },
           ]}
         />
       </View>
@@ -323,13 +265,11 @@ function FlightHUD() {
 
   return (
     <View style={styles.hud} pointerEvents="none">
-      {/* Top center - speed */}
       <View style={styles.hudTop}>
         <Text style={styles.hudSpeedValue}>{metrics.speedDisplay}</Text>
         <Text style={styles.hudSpeedLabel}>{speedStatus}</Text>
       </View>
 
-      {/* Bottom center - profile */}
       <View style={styles.hudBottom}>
         <Text style={styles.hudProfileLabel}>
           {flightState.profile.name.toUpperCase()}
@@ -339,7 +279,6 @@ function FlightHUD() {
         )}
       </View>
 
-      {/* Controls locked indicator */}
       {flightState.controlsLocked && (
         <View style={styles.hudLocked}>
           <Text style={styles.hudLockedText}>CONTROLS LOCKED</Text>
@@ -355,28 +294,21 @@ interface FlightViewportProps {
 }
 
 export function FlightViewport({ onExitFlight }: FlightViewportProps) {
-  const attitude = useFlightStore((s) => s.attitude);
-  const throttle = useFlightStore((s) => s.throttle);
   const profile = useFlightStore((s) => s.profile);
-  const metrics = computeFlightMetrics(useFlightStore());
+  const activeShipId = useFlightStore((s) => s.activeShipId);
 
-  // Map profile ID to ship type
-  const getShipType = (): 'scout' | 'fighter' | 'trader' | 'explorer' => {
-    switch (profile.id) {
-      case 'scout': return 'scout';
-      case 'fighter': return 'fighter';
-      case 'trader': return 'trader';
-      case 'explorer': return 'explorer';
-      default: return 'scout';
-    }
-  };
+  // Map profile ID to ship type for visualization
+  const shipType: 'scout' | 'fighter' | 'trader' | 'explorer' =
+    ['scout', 'fighter', 'trader', 'explorer'].includes(profile.id)
+      ? profile.id as 'scout' | 'fighter' | 'trader' | 'explorer'
+      : 'scout';
 
   return (
     <View style={styles.container}>
       {/* 3D Ship visualization with integrated starfield */}
       <View style={styles.shipContainer3D}>
-        <ShipVisualization3D
-          shipType={getShipType()}
+        <ShipVisualization3DNew
+          shipType={shipType}
           size={{ width: SCREEN_WIDTH - 140, height: SCREEN_HEIGHT * 0.5 }}
         />
       </View>
@@ -408,8 +340,9 @@ export function FlightViewport({ onExitFlight }: FlightViewportProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: tokens.colors.background.space,
+    backgroundColor: '#050810',
   },
+  // 3D Ship container
   shipContainer3D: {
     position: 'absolute',
     top: 60,
@@ -453,8 +386,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 4,
     right: 4,
-    height: 24,
-    borderRadius: 12,
+    borderRadius: 16,
   },
   throttleTick: {
     position: 'absolute',
@@ -493,6 +425,35 @@ const styles = StyleSheet.create({
     borderColor: tokens.colors.border.default,
     position: 'relative',
   },
+  attitudeGrid: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attitudeHLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: tokens.colors.text.tertiary,
+    opacity: 0.3,
+  },
+  attitudeVLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: tokens.colors.text.tertiary,
+    opacity: 0.3,
+  },
+  attitudeCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 1,
+    borderColor: tokens.colors.text.tertiary,
+    opacity: 0.3,
+  },
   attitudeThumb: {
     position: 'absolute',
     backgroundColor: tokens.colors.semantic.navigation,
@@ -521,9 +482,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   yawTrack: {
-    height: 30,
     backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 15,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: tokens.colors.border.default,
     position: 'relative',
@@ -539,11 +499,9 @@ const styles = StyleSheet.create({
   },
   yawThumb: {
     position: 'absolute',
-    top: 3,
-    width: 30,
-    height: 24,
+    top: 4,
     backgroundColor: tokens.colors.semantic.navigation,
-    borderRadius: 12,
+    borderRadius: 16,
   },
   // HUD
   hud: {
