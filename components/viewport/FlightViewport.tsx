@@ -19,30 +19,29 @@ import { shipApi } from '@/api/ships';
 /**
  * FlightViewport - Dedicated flight mode viewport
  *
- * Shows:
- * - Animated ship silhouette responding to attitude (pitch/roll/yaw)
- * - Parallax starfield background
- * - Flight control inputs (throttle slider, attitude joystick)
- * - HUD overlay with flight data
+ * LCARS-style unified interface with:
+ * - Ship visualization in main viewport
+ * - All controls integrated into bottom LCARS bar:
+ *   - Throttle (vertical slider)
+ *   - Ship vitals (Hull/Shield/Fuel)
+ *   - Attitude joystick (compact)
+ *   - YAW control (horizontal)
+ *   - Flight profile + Exit button
  */
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CONTROL_BAR_HEIGHT = 130;
 
 /**
- * Throttle slider control
+ * Compact Throttle Control for LCARS bar
  */
-function ThrottleControl() {
+function ThrottleCompact() {
   const throttle = useFlightStore((s) => s.throttle);
-  const setThrottle = useFlightStore((s) => s.setThrottle);
-
-  const sliderHeight = 240;
-  const thumbSize = 32;
-  const trackWidth = 56;
-
-  // Track starting throttle on touch
+  const sliderHeight = 90;
+  const thumbSize = 20;
+  const trackWidth = 36;
   const startThrottleRef = useRef(throttle.current);
 
-  // Use getState() inside callbacks to avoid stale closures on iOS
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
@@ -53,16 +52,9 @@ function ThrottleControl() {
         startThrottleRef.current = useFlightStore.getState().throttle.current;
       },
       onPanResponderMove: (_, gestureState) => {
-        // Use relative movement (dy) instead of absolute position
         const deltaThrottle = -gestureState.dy / sliderHeight;
         const newThrottle = Math.max(0, Math.min(1, startThrottleRef.current + deltaThrottle));
         useFlightStore.getState().setThrottle(newThrottle);
-      },
-      onPanResponderRelease: () => {
-        // Throttle maintains position on release (no reset)
-      },
-      onPanResponderTerminate: () => {
-        // Throttle maintains position on terminate (no reset)
       },
     })
   ).current;
@@ -71,198 +63,19 @@ function ThrottleControl() {
   const color = getThrottleColor(throttle.current);
 
   return (
-    <View style={styles.throttleContainer}>
-      <Text style={styles.throttleLabel}>THR</Text>
-      <View style={[styles.throttleTrack, { height: sliderHeight, width: trackWidth }]} {...panResponder.panHandlers}>
-        <View
-          style={[
-            styles.throttleFill,
-            {
-              height: `${throttle.current * 100}%`,
-              backgroundColor: color,
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.throttleThumb,
-            {
-              top: thumbPosition,
-              height: thumbSize,
-              backgroundColor: color,
-            },
-          ]}
-        />
-        {[0, 25, 50, 75, 100].map((tick) => (
-          <View
-            key={tick}
-            style={[
-              styles.throttleTick,
-              { bottom: `${tick}%` },
-            ]}
-          />
-        ))}
+    <View style={styles.throttleCompact}>
+      <Text style={styles.controlLabel}>THR</Text>
+      <View style={[styles.throttleTrackCompact, { height: sliderHeight, width: trackWidth }]} {...panResponder.panHandlers}>
+        <View style={[styles.throttleFillCompact, { height: `${throttle.current * 100}%`, backgroundColor: color }]} />
+        <View style={[styles.throttleThumbCompact, { top: thumbPosition, backgroundColor: color }]} />
       </View>
-      <Text style={[styles.throttleValue, { color }]}>
-        {Math.round(throttle.current * 100)}%
-      </Text>
+      <Text style={[styles.throttleValueCompact, { color }]}>{Math.round(throttle.current * 100)}%</Text>
     </View>
   );
 }
 
 /**
- * Attitude control stick (virtual joystick)
- */
-function AttitudeControl() {
-  const attitude = useFlightStore((s) => s.attitude);
-  const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
-
-  const stickSize = 180;
-  const thumbSize = 50;
-  const maxOffset = (stickSize - thumbSize) / 2;
-
-  // Use getState() inside callbacks to avoid stale closures on iOS
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
-      onStartShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
-      onMoveShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
-      onMoveShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
-      onPanResponderGrant: () => {},
-      onPanResponderMove: (_, gestureState) => {
-        const store = useFlightStore.getState();
-        const offsetX = gestureState.dx;
-        const offsetY = gestureState.dy;
-
-        const roll = Math.max(-1, Math.min(1, offsetX / maxOffset));
-        const pitch = Math.max(-1, Math.min(1, -offsetY / maxOffset));
-
-        store.setRoll(roll);
-        store.setPitch(pitch);
-
-        if (!store.axisCouplingEnabled) {
-          store.setYaw(roll * 0.5);
-        }
-      },
-      onPanResponderRelease: () => {
-        const store = useFlightStore.getState();
-        store.setRoll(0);
-        store.setPitch(0);
-        store.setYaw(0);
-      },
-      onPanResponderTerminate: () => {
-        // Also reset on terminate (iOS can terminate gestures)
-        const store = useFlightStore.getState();
-        store.setRoll(0);
-        store.setPitch(0);
-        store.setYaw(0);
-      },
-    })
-  ).current;
-
-  const thumbX = stickSize / 2 - thumbSize / 2 + attitude.roll.smoothed * maxOffset;
-  const thumbY = stickSize / 2 - thumbSize / 2 - attitude.pitch.smoothed * maxOffset;
-
-  return (
-    <View style={styles.attitudeContainer}>
-      <Text style={styles.attitudeLabel}>ATTITUDE</Text>
-      <View
-        style={[styles.attitudeStick, { width: stickSize, height: stickSize }]}
-        {...panResponder.panHandlers}
-      >
-        {/* Grid lines */}
-        <View style={styles.attitudeGrid}>
-          <View style={styles.attitudeHLine} />
-          <View style={styles.attitudeVLine} />
-          <View style={styles.attitudeCircle} />
-        </View>
-
-        {/* Thumb */}
-        <View
-          style={[
-            styles.attitudeThumb,
-            {
-              width: thumbSize,
-              height: thumbSize,
-              left: thumbX,
-              top: thumbY,
-            },
-          ]}
-        />
-      </View>
-      <View style={styles.attitudeReadout}>
-        <Text style={styles.attitudeReadoutText}>
-          P:{(attitude.pitch.smoothed * 100).toFixed(0).padStart(4, ' ')}
-        </Text>
-        <Text style={styles.attitudeReadoutText}>
-          R:{(attitude.roll.smoothed * 100).toFixed(0).padStart(4, ' ')}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-/**
- * Yaw pedal control - Horizontal version for bottom control bar
- */
-function YawControlHorizontal() {
-  const attitude = useFlightStore((s) => s.attitude);
-  const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
-
-  const sliderWidth = 200;
-  const sliderHeight = 32;
-
-  // Use getState() inside callbacks to avoid stale closures on iOS
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
-      onStartShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
-      onMoveShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
-      onMoveShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
-      onPanResponderMove: (_, gestureState) => {
-        const yaw = Math.max(-1, Math.min(1, gestureState.dx / (sliderWidth / 2)));
-        useFlightStore.getState().setYaw(yaw);
-      },
-      onPanResponderRelease: () => {
-        useFlightStore.getState().setYaw(0);
-      },
-      onPanResponderTerminate: () => {
-        useFlightStore.getState().setYaw(0);
-      },
-    })
-  ).current;
-
-  const thumbWidth = 36;
-  const thumbOffset = attitude.yaw.smoothed * (sliderWidth / 2 - thumbWidth / 2);
-
-  return (
-    <View style={styles.yawHorizontalContainer}>
-      <Text style={styles.yawHorizontalLabel}>◄</Text>
-      <View style={[styles.yawHorizontalTrack, { width: sliderWidth, height: sliderHeight }]} {...panResponder.panHandlers}>
-        <View style={styles.yawHorizontalCenter} />
-        {/* Tick marks */}
-        <View style={[styles.yawTick, { left: '25%' }]} />
-        <View style={[styles.yawTick, { left: '75%' }]} />
-        <View
-          style={[
-            styles.yawHorizontalThumb,
-            {
-              left: sliderWidth / 2 - thumbWidth / 2 + thumbOffset,
-              width: thumbWidth,
-            },
-          ]}
-        />
-      </View>
-      <Text style={styles.yawHorizontalLabel}>►</Text>
-      {axisCouplingEnabled && (
-        <Text style={styles.yawCoupledBadge}>COUPLED</Text>
-      )}
-    </View>
-  );
-}
-
-/**
- * Ship vitals mini-gauges for flight control bar
+ * Ship vitals mini-gauges
  */
 function ShipVitalsCompact() {
   const { profileId } = useAuth();
@@ -292,101 +105,218 @@ function ShipVitalsCompact() {
 
   return (
     <View style={styles.vitalsContainer}>
-      <View style={styles.vitalRow}>
-        <Text style={styles.vitalLabel}>HUL</Text>
-        <View style={styles.vitalBarContainer}>
-          <View style={[styles.vitalBarFill, { width: `${hullPct}%`, backgroundColor: getHullColor() }]} />
+      <Text style={styles.controlLabel}>VITALS</Text>
+      <View style={styles.vitalsStack}>
+        <View style={styles.vitalRow}>
+          <Text style={styles.vitalLabel}>HUL</Text>
+          <View style={styles.vitalBarContainer}>
+            <View style={[styles.vitalBarFill, { width: `${hullPct}%`, backgroundColor: getHullColor() }]} />
+          </View>
         </View>
-        <Text style={[styles.vitalValue, { color: getHullColor() }]}>{Math.floor(hullPct)}</Text>
-      </View>
-      <View style={styles.vitalRow}>
-        <Text style={styles.vitalLabel}>SHD</Text>
-        <View style={styles.vitalBarContainer}>
-          <View style={[styles.vitalBarFill, { width: `${shieldPct}%`, backgroundColor: tokens.colors.command.blue }]} />
+        <View style={styles.vitalRow}>
+          <Text style={styles.vitalLabel}>SHD</Text>
+          <View style={styles.vitalBarContainer}>
+            <View style={[styles.vitalBarFill, { width: `${shieldPct}%`, backgroundColor: tokens.colors.command.blue }]} />
+          </View>
         </View>
-        <Text style={[styles.vitalValue, { color: tokens.colors.command.blue }]}>{Math.floor(shieldPct)}</Text>
-      </View>
-      <View style={styles.vitalRow}>
-        <Text style={styles.vitalLabel}>FUL</Text>
-        <View style={styles.vitalBarContainer}>
-          <View style={[styles.vitalBarFill, { width: `${fuelPct}%`, backgroundColor: tokens.colors.operations.orange }]} />
+        <View style={styles.vitalRow}>
+          <Text style={styles.vitalLabel}>FUL</Text>
+          <View style={styles.vitalBarContainer}>
+            <View style={[styles.vitalBarFill, { width: `${fuelPct}%`, backgroundColor: tokens.colors.operations.orange }]} />
+          </View>
         </View>
-        <Text style={[styles.vitalValue, { color: tokens.colors.operations.orange }]}>{Math.floor(fuelPct)}</Text>
       </View>
     </View>
   );
 }
 
 /**
- * Flight profile and readout display
+ * Compact Attitude joystick for LCARS bar
  */
-function FlightProfileDisplay() {
-  const profile = useFlightStore((s) => s.profile);
+function AttitudeCompact() {
   const attitude = useFlightStore((s) => s.attitude);
+  const stickSize = 80;
+  const thumbSize = 24;
+  const maxOffset = (stickSize - thumbSize) / 2;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onStartShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onPanResponderMove: (_, gestureState) => {
+        const store = useFlightStore.getState();
+        const roll = Math.max(-1, Math.min(1, gestureState.dx / maxOffset));
+        const pitch = Math.max(-1, Math.min(1, -gestureState.dy / maxOffset));
+        store.setRoll(roll);
+        store.setPitch(pitch);
+        if (!store.axisCouplingEnabled) {
+          store.setYaw(roll * 0.5);
+        }
+      },
+      onPanResponderRelease: () => {
+        const store = useFlightStore.getState();
+        store.setRoll(0);
+        store.setPitch(0);
+        store.setYaw(0);
+      },
+      onPanResponderTerminate: () => {
+        const store = useFlightStore.getState();
+        store.setRoll(0);
+        store.setPitch(0);
+        store.setYaw(0);
+      },
+    })
+  ).current;
+
+  const thumbX = stickSize / 2 - thumbSize / 2 + attitude.roll.smoothed * maxOffset;
+  const thumbY = stickSize / 2 - thumbSize / 2 - attitude.pitch.smoothed * maxOffset;
+
+  return (
+    <View style={styles.attitudeCompact}>
+      <Text style={styles.controlLabel}>ATTITUDE</Text>
+      <View style={[styles.attitudeStickCompact, { width: stickSize, height: stickSize }]} {...panResponder.panHandlers}>
+        <View style={styles.attitudeGridCompact}>
+          <View style={styles.attitudeHLineCompact} />
+          <View style={styles.attitudeVLineCompact} />
+        </View>
+        <View style={[styles.attitudeThumbCompact, { width: thumbSize, height: thumbSize, left: thumbX, top: thumbY }]} />
+      </View>
+      <Text style={styles.attitudeReadoutCompact}>
+        P:{(attitude.pitch.smoothed * 100).toFixed(0).padStart(3, ' ')} R:{(attitude.roll.smoothed * 100).toFixed(0).padStart(3, ' ')}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Horizontal YAW control
+ */
+function YawControl() {
+  const attitude = useFlightStore((s) => s.attitude);
+  const sliderWidth = 140;
+  const sliderHeight = 28;
+  const thumbWidth = 32;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onStartShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponder: () => !useFlightStore.getState().controlsLocked,
+      onMoveShouldSetPanResponderCapture: () => !useFlightStore.getState().controlsLocked,
+      onPanResponderMove: (_, gestureState) => {
+        const yaw = Math.max(-1, Math.min(1, gestureState.dx / (sliderWidth / 2)));
+        useFlightStore.getState().setYaw(yaw);
+      },
+      onPanResponderRelease: () => {
+        useFlightStore.getState().setYaw(0);
+      },
+      onPanResponderTerminate: () => {
+        useFlightStore.getState().setYaw(0);
+      },
+    })
+  ).current;
+
+  const thumbOffset = attitude.yaw.smoothed * (sliderWidth / 2 - thumbWidth / 2);
+
+  return (
+    <View style={styles.yawContainer}>
+      <Text style={styles.controlLabel}>YAW</Text>
+      <View style={styles.yawRow}>
+        <Text style={styles.yawArrow}>◄</Text>
+        <View style={[styles.yawTrack, { width: sliderWidth, height: sliderHeight }]} {...panResponder.panHandlers}>
+          <View style={styles.yawCenter} />
+          <View style={[styles.yawThumb, { left: sliderWidth / 2 - thumbWidth / 2 + thumbOffset, width: thumbWidth }]} />
+        </View>
+        <Text style={styles.yawArrow}>►</Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Flight profile and exit button section
+ */
+function ProfileAndExit({ onExitFlight }: { onExitFlight?: () => void }) {
+  const profile = useFlightStore((s) => s.profile);
   const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
 
   return (
-    <View style={styles.profileContainer}>
+    <View style={styles.profileSection}>
+      <Text style={styles.controlLabel}>MODE</Text>
       <Text style={styles.profileName}>{profile.name.toUpperCase()}</Text>
-      {axisCouplingEnabled && (
-        <Text style={styles.profileCoupling}>ROLL→YAW</Text>
+      {axisCouplingEnabled && <Text style={styles.couplingBadge}>ROLL→YAW</Text>}
+      {onExitFlight && (
+        <TouchableOpacity style={styles.exitButton} onPress={onExitFlight}>
+          <Text style={styles.exitButtonText}>EXIT</Text>
+        </TouchableOpacity>
       )}
-      <View style={styles.attitudeReadoutCompact}>
-        <Text style={styles.readoutText}>
-          P:{(attitude.pitch.smoothed * 100).toFixed(0).padStart(4, ' ')}
-        </Text>
-        <Text style={styles.readoutText}>
-          R:{(attitude.roll.smoothed * 100).toFixed(0).padStart(4, ' ')}
-        </Text>
-      </View>
     </View>
   );
 }
 
 /**
- * Integrated LCARS-style flight control bar
+ * Unified LCARS Control Bar - Contains ALL flight controls
  */
-function FlightControlBar() {
+function LCARSControlBar({ onExitFlight }: { onExitFlight?: () => void }) {
   return (
     <View style={styles.controlBar}>
-      {/* Left: Ship Vitals */}
-      <View style={styles.controlBarLeft}>
+      {/* Throttle */}
+      <View style={styles.controlSection}>
+        <ThrottleCompact />
+      </View>
+
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* Vitals */}
+      <View style={styles.controlSection}>
         <ShipVitalsCompact />
       </View>
 
-      {/* Center: YAW Control */}
-      <View style={styles.controlBarCenter}>
-        <Text style={styles.controlBarLabel}>YAW</Text>
-        <YawControlHorizontal />
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* Attitude */}
+      <View style={styles.controlSectionWide}>
+        <AttitudeCompact />
       </View>
 
-      {/* Right: Flight Profile */}
-      <View style={styles.controlBarRight}>
-        <FlightProfileDisplay />
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* YAW */}
+      <View style={styles.controlSectionWide}>
+        <YawControl />
+      </View>
+
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* Profile + Exit */}
+      <View style={styles.controlSection}>
+        <ProfileAndExit onExitFlight={onExitFlight} />
       </View>
     </View>
   );
 }
 
 /**
- * Flight HUD overlay - Speed display at top only
+ * Speed HUD overlay - Shows speed at top of viewport
  */
-function FlightHUD() {
+function SpeedHUD() {
   const flightState = useFlightStore();
   const metrics = computeFlightMetrics(flightState);
   const speedStatus = getSpeedStatus(metrics.speedPercent);
 
   return (
-    <View style={styles.hud} pointerEvents="none">
-      <View style={styles.hudTop}>
-        <Text style={styles.hudSpeedValue}>{metrics.speedDisplay}</Text>
-        <Text style={styles.hudSpeedLabel}>{speedStatus}</Text>
-      </View>
-
+    <View style={styles.speedHUD} pointerEvents="none">
+      <Text style={styles.speedValue}>{metrics.speedDisplay}</Text>
+      <Text style={styles.speedLabel}>{speedStatus}</Text>
       {flightState.controlsLocked && (
-        <View style={styles.hudLocked}>
-          <Text style={styles.hudLockedText}>CONTROLS LOCKED</Text>
-          <Text style={styles.hudLockedReason}>{flightState.controlsLockReason}</Text>
+        <View style={styles.lockedBanner}>
+          <Text style={styles.lockedText}>CONTROLS LOCKED</Text>
         </View>
       )}
     </View>
@@ -399,46 +329,31 @@ interface FlightViewportProps {
 
 export function FlightViewport({ onExitFlight }: FlightViewportProps) {
   const profile = useFlightStore((s) => s.profile);
-  const activeShipId = useFlightStore((s) => s.activeShipId);
 
   // Map profile ID to ship type for visualization
   const shipType: 'scout' | 'fighter' | 'trader' | 'explorer' =
     ['scout', 'fighter', 'trader', 'explorer'].includes(profile.id)
-      ? profile.id as 'scout' | 'fighter' | 'trader' | 'explorer'
+      ? (profile.id as 'scout' | 'fighter' | 'trader' | 'explorer')
       : 'scout';
+
+  // Calculate ship area height (full height minus control bar)
+  const shipAreaHeight = SCREEN_HEIGHT - CONTROL_BAR_HEIGHT - 56; // 56 for header
 
   return (
     <View style={styles.container}>
-      {/* Ship visualization with integrated starfield */}
-      <View style={styles.shipContainer3D}>
+      {/* Ship Visualization - Takes all space above control bar */}
+      <View style={styles.shipArea}>
         <ShipVisualization3D
           shipType={shipType}
-          size={{ width: SCREEN_WIDTH - 140, height: SCREEN_HEIGHT * 0.55 }}
+          size={{ width: SCREEN_WIDTH - 80, height: shipAreaHeight * 0.7 }}
         />
       </View>
 
-      {/* Flight HUD overlay */}
-      <FlightHUD />
+      {/* Speed HUD overlay */}
+      <SpeedHUD />
 
-      {/* Left side - Throttle */}
-      <View style={styles.leftControls}>
-        <ThrottleControl />
-      </View>
-
-      {/* Right side - Attitude only (YAW moved to bottom bar) */}
-      <View style={styles.rightControls}>
-        <AttitudeControl />
-      </View>
-
-      {/* Bottom - Integrated LCARS Control Bar */}
-      <FlightControlBar />
-
-      {/* Exit button */}
-      {onExitFlight && (
-        <TouchableOpacity style={styles.exitButton} onPress={onExitFlight}>
-          <Text style={styles.exitButtonText}>EXIT FLIGHT</Text>
-        </TouchableOpacity>
-      )}
+      {/* LCARS Control Bar - All controls unified at bottom */}
+      <LCARSControlBar onExitFlight={onExitFlight} />
     </View>
   );
 }
@@ -448,288 +363,215 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#050810',
   },
-  // 3D Ship container
-  shipContainer3D: {
-    position: 'absolute',
-    top: 60,
-    left: 70,
-    right: 70,
-    alignItems: 'center',
-  },
-  // Left controls (throttle)
-  leftControls: {
-    position: 'absolute',
-    left: 16,
-    top: '30%',
-    alignItems: 'center',
-  },
-  throttleContainer: {
-    alignItems: 'center',
-  },
-  throttleLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: tokens.colors.text.tertiary,
-    marginBottom: 8,
-  },
-  throttleTrack: {
-    width: 40,
-    backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: tokens.colors.border.default,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  throttleFill: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderRadius: 20,
-  },
-  throttleThumb: {
-    position: 'absolute',
-    left: 4,
-    right: 4,
-    borderRadius: 16,
-  },
-  throttleTick: {
-    position: 'absolute',
-    left: 0,
-    width: 8,
-    height: 1,
-    backgroundColor: tokens.colors.text.tertiary,
-  },
-  throttleValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: tokens.typography.fontFamily.mono,
-    marginTop: 8,
-  },
-  // Right controls (attitude)
-  rightControls: {
-    position: 'absolute',
-    right: 16,
-    top: '30%',
-    alignItems: 'center',
-    gap: 16,
-  },
-  attitudeContainer: {
-    alignItems: 'center',
-  },
-  attitudeLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: tokens.colors.text.tertiary,
-    marginBottom: 8,
-  },
-  attitudeStick: {
-    backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 75,
-    borderWidth: 1,
-    borderColor: tokens.colors.border.default,
-    position: 'relative',
-  },
-  attitudeGrid: {
-    ...StyleSheet.absoluteFillObject,
+  // Ship visualization area
+  shipArea: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: 40,
+    paddingBottom: CONTROL_BAR_HEIGHT,
   },
-  attitudeHLine: {
+  // Speed HUD at top
+  speedHUD: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: tokens.colors.text.tertiary,
-    opacity: 0.3,
-  },
-  attitudeVLine: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: tokens.colors.text.tertiary,
-    opacity: 0.3,
-  },
-  attitudeCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 1,
-    borderColor: tokens.colors.text.tertiary,
-    opacity: 0.3,
-  },
-  attitudeThumb: {
-    position: 'absolute',
-    backgroundColor: tokens.colors.semantic.navigation,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: tokens.colors.text.primary,
-  },
-  attitudeReadout: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  attitudeReadoutText: {
-    fontSize: 10,
-    fontFamily: tokens.typography.fontFamily.mono,
-    color: tokens.colors.text.tertiary,
-  },
-  // Yaw control
-  yawContainer: {
-    alignItems: 'center',
-  },
-  yawLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: tokens.colors.text.tertiary,
-    marginBottom: 4,
-  },
-  yawTrack: {
-    backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: tokens.colors.border.default,
-    position: 'relative',
-  },
-  yawCenter: {
-    position: 'absolute',
-    left: '50%',
-    top: 5,
-    bottom: 5,
-    width: 2,
-    marginLeft: -1,
-    backgroundColor: tokens.colors.text.tertiary,
-  },
-  yawThumb: {
-    position: 'absolute',
-    top: 4,
-    backgroundColor: tokens.colors.semantic.navigation,
-    borderRadius: 16,
-  },
-  // HUD
-  hud: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  hudTop: {
-    position: 'absolute',
-    top: 20,
+    top: 16,
     left: 0,
     right: 0,
     alignItems: 'center',
   },
-  hudSpeedValue: {
-    fontSize: 32,
+  speedValue: {
+    fontSize: 28,
     fontWeight: '700',
     color: tokens.colors.text.primary,
     fontFamily: tokens.typography.fontFamily.mono,
   },
-  hudSpeedLabel: {
-    fontSize: 12,
+  speedLabel: {
+    fontSize: 11,
     fontWeight: '600',
     color: tokens.colors.text.secondary,
     textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  hudLocked: {
-    position: 'absolute',
-    top: '50%',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+  lockedBanner: {
+    marginTop: 8,
     backgroundColor: tokens.colors.alert.red + '40',
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderRadius: 4,
   },
-  hudLockedText: {
-    fontSize: 16,
+  lockedText: {
+    fontSize: 12,
     fontWeight: '700',
     color: tokens.colors.alert.red,
   },
-  hudLockedReason: {
-    fontSize: 12,
-    color: tokens.colors.text.secondary,
-    marginTop: 4,
-  },
-  // Exit button
-  exitButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    backgroundColor: tokens.colors.background.secondary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: tokens.colors.border.default,
-  },
-  exitButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: tokens.colors.text.secondary,
-    textTransform: 'uppercase',
-  },
-  // LCARS-style Flight Control Bar
+  // LCARS Control Bar
   controlBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 80,
+    height: CONTROL_BAR_HEIGHT,
     flexDirection: 'row',
     backgroundColor: tokens.colors.console.deepSpace,
-    borderTopWidth: 2,
+    borderTopWidth: 3,
     borderTopColor: tokens.colors.command.blue,
-  },
-  controlBarLeft: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    justifyContent: 'center',
-    borderRightWidth: 1,
-    borderRightColor: tokens.colors.border.default,
-  },
-  controlBarCenter: {
-    flex: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 8,
-  },
-  controlBarRight: {
-    flex: 1,
-    paddingHorizontal: 12,
     paddingVertical: 8,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    borderLeftWidth: 1,
-    borderLeftColor: tokens.colors.border.default,
   },
-  controlBarLabel: {
-    fontSize: 10,
+  controlSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 4,
+  },
+  controlSectionWide: {
+    flex: 1.3,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 4,
+  },
+  divider: {
+    width: 1,
+    backgroundColor: tokens.colors.border.default,
+    marginVertical: 8,
+  },
+  controlLabel: {
+    fontSize: 9,
     fontWeight: '700',
-    color: tokens.colors.text.tertiary,
-    marginBottom: 4,
+    color: tokens.colors.text.muted,
     letterSpacing: 1,
+    marginBottom: 4,
+    textAlign: 'center',
   },
-  // Horizontal YAW control
-  yawHorizontalContainer: {
+  // Throttle compact
+  throttleCompact: {
+    alignItems: 'center',
+  },
+  throttleTrackCompact: {
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: tokens.colors.border.default,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  throttleFillCompact: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 18,
+  },
+  throttleThumbCompact: {
+    position: 'absolute',
+    left: 3,
+    right: 3,
+    height: 16,
+    borderRadius: 8,
+  },
+  throttleValueCompact: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: tokens.typography.fontFamily.mono,
+    marginTop: 4,
+  },
+  // Vitals
+  vitalsContainer: {
+    alignItems: 'center',
+  },
+  vitalsStack: {
+    gap: 6,
+  },
+  vitalRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
-  yawHorizontalLabel: {
-    fontSize: 14,
-    color: tokens.colors.semantic.navigation,
+  vitalLabel: {
+    fontSize: 8,
     fontWeight: '700',
+    color: tokens.colors.text.muted,
+    width: 22,
+    fontFamily: tokens.typography.fontFamily.mono,
   },
-  yawHorizontalTrack: {
+  vitalBarContainer: {
+    width: 40,
+    height: 8,
+    backgroundColor: tokens.colors.console.hull,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  vitalBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  // Attitude compact
+  attitudeCompact: {
+    alignItems: 'center',
+  },
+  attitudeStickCompact: {
     backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 16,
+    borderRadius: 40,
     borderWidth: 1,
     borderColor: tokens.colors.border.default,
     position: 'relative',
   },
-  yawHorizontalCenter: {
+  attitudeGridCompact: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attitudeHLineCompact: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    height: 1,
+    backgroundColor: tokens.colors.text.tertiary,
+    opacity: 0.4,
+  },
+  attitudeVLineCompact: {
+    position: 'absolute',
+    top: 8,
+    bottom: 8,
+    width: 1,
+    backgroundColor: tokens.colors.text.tertiary,
+    opacity: 0.4,
+  },
+  attitudeThumbCompact: {
+    position: 'absolute',
+    backgroundColor: tokens.colors.semantic.navigation,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: tokens.colors.text.primary,
+  },
+  attitudeReadoutCompact: {
+    fontSize: 8,
+    fontFamily: tokens.typography.fontFamily.mono,
+    color: tokens.colors.text.tertiary,
+    marginTop: 4,
+  },
+  // YAW
+  yawContainer: {
+    alignItems: 'center',
+  },
+  yawRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  yawArrow: {
+    fontSize: 14,
+    color: tokens.colors.semantic.navigation,
+    fontWeight: '700',
+  },
+  yawTrack: {
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: tokens.colors.border.default,
+    position: 'relative',
+  },
+  yawCenter: {
     position: 'absolute',
     left: '50%',
     top: 4,
@@ -739,89 +581,39 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.text.tertiary,
     opacity: 0.5,
   },
-  yawTick: {
-    position: 'absolute',
-    top: 4,
-    bottom: 4,
-    width: 1,
-    backgroundColor: tokens.colors.text.tertiary,
-    opacity: 0.3,
-  },
-  yawHorizontalThumb: {
+  yawThumb: {
     position: 'absolute',
     top: 4,
     bottom: 4,
     backgroundColor: tokens.colors.semantic.navigation,
-    borderRadius: 12,
+    borderRadius: 10,
   },
-  yawCoupledBadge: {
-    position: 'absolute',
-    top: -12,
-    right: 0,
-    fontSize: 8,
-    fontWeight: '700',
-    color: tokens.colors.lcars.orange,
-    backgroundColor: tokens.colors.console.deepSpace,
-    paddingHorizontal: 4,
-  },
-  // Ship Vitals Compact
-  vitalsContainer: {
-    gap: 4,
-  },
-  vitalRow: {
-    flexDirection: 'row',
+  // Profile & Exit
+  profileSection: {
     alignItems: 'center',
-    gap: 6,
-  },
-  vitalLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: tokens.colors.text.muted,
-    width: 24,
-    fontFamily: tokens.typography.fontFamily.mono,
-  },
-  vitalBarContainer: {
-    width: 50,
-    height: 6,
-    backgroundColor: tokens.colors.console.hull,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  vitalBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  vitalValue: {
-    fontSize: 10,
-    fontWeight: '700',
-    width: 20,
-    textAlign: 'right',
-    fontFamily: tokens.typography.fontFamily.mono,
-  },
-  // Flight Profile Display
-  profileContainer: {
-    alignItems: 'flex-end',
   },
   profileName: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     color: tokens.colors.semantic.navigation,
     fontFamily: tokens.typography.fontFamily.mono,
   },
-  profileCoupling: {
-    fontSize: 9,
+  couplingBadge: {
+    fontSize: 8,
     fontWeight: '600',
     color: tokens.colors.lcars.orange,
     marginTop: 2,
   },
-  attitudeReadoutCompact: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
+  exitButton: {
+    marginTop: 8,
+    backgroundColor: tokens.colors.command.red,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
   },
-  readoutText: {
-    fontSize: 9,
-    fontFamily: tokens.typography.fontFamily.mono,
-    color: tokens.colors.text.tertiary,
+  exitButtonText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.colors.text.inverse,
   },
 });

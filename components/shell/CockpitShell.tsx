@@ -4,8 +4,6 @@ import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
 import { HeaderBar } from './HeaderBar';
 import { LeftRail } from './LeftRail';
-import { CommandBar } from './CommandBar';
-import { StatusBar } from './StatusBar';
 import { AlertOverlay } from './AlertOverlay';
 import { ContextualPanel, PanelRouter } from '@/components/panels';
 import { FlightViewport } from '@/components/viewport/FlightViewport';
@@ -34,13 +32,10 @@ import { useAuth } from '@/contexts/AuthContext';
  * │  L   │                                                 │
  * │      │                                                 │
  * │ 80px │                                                 │
- * ├──────┴─────────────────────────────────────────────────┤
- * │                   STATUS BAR (48px)                    │
- * │    Hull/Shield/Fuel + Location + Cargo                 │
- * ├────────────────────────────────────────────────────────┤
- * │                  COMMAND BAR (56px)                    │
- * │    Ticker + Action Buttons                             │
- * └────────────────────────────────────────────────────────┘
+ * └──────┴─────────────────────────────────────────────────┘
+ *
+ * Note: StatusBar and CommandBar removed - ship vitals and
+ * flight controls integrated into FlightViewport LCARS bar
  */
 
 interface CockpitShellProps {
@@ -139,12 +134,6 @@ export function CockpitShell({ children }: CockpitShellProps) {
           <AlertOverlay />
         </View>
       </View>
-
-      {/* Status Bar - Ship vitals, location, cargo (hidden in flight mode) */}
-      {activeViewport !== 'flight' && <StatusBar />}
-
-      {/* Command Bar - Actions (hidden in flight mode) */}
-      {activeViewport !== 'flight' && <CommandBar />}
 
       {/* Combat HUD */}
       {profileId && <CombatHUD playerId={profileId} />}

@@ -2,7 +2,6 @@ import { Slot } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '@/ui/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { PerformanceOverlay } from '@/components/PerformanceOverlay';
 import { CockpitShell } from '@/components/shell';
 
 /**
@@ -11,7 +10,7 @@ import { CockpitShell } from '@/components/shell';
  * Per UI/UX Doctrine and Implementation Architecture:
  * - CockpitShell wraps all game content
  * - Shell MUST NEVER remount during session
- * - HeaderBar, LeftRail, CommandBar are persistent
+ * - HeaderBar, LeftRail are persistent
  * - Tab router hidden; LeftRail handles navigation state
  * - Content renders inside shell viewport via Slot
  *
@@ -30,7 +29,6 @@ export default function TabLayout() {
           {/* Tab content renders here inside the viewport */}
           <Slot />
         </CockpitShell>
-        <PerformanceOverlay />
       </SafeAreaView>
     </ErrorBoundary>
   );
