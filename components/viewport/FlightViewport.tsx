@@ -30,16 +30,18 @@ import { shipApi } from '@/api/ships';
  */
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CONTROL_BAR_HEIGHT = 150;
+const CONTROL_BAR_HEIGHT = 240;
 
 /**
- * Compact Throttle Control for LCARS bar
+ * Throttle + Speed section - throttle slider with SK readout below
  */
-function ThrottleCompact() {
+function ThrottleSpeedSection() {
   const throttle = useFlightStore((s) => s.throttle);
-  const sliderHeight = 70;
+  const flightState = useFlightStore();
+  const metrics = computeFlightMetrics(flightState);
+  const sliderHeight = 130;
   const thumbSize = 14;
-  const trackWidth = 24;
+  const trackWidth = 28;
   const startThrottleRef = useRef(throttle.current);
 
   const panResponder = useRef(
@@ -64,7 +66,8 @@ function ThrottleCompact() {
   const isHot = throttle.current > 0.85;
 
   return (
-    <View style={styles.throttleCompact}>
+    <View style={styles.throttleSpeedSection}>
+      <Text style={styles.controlLabel}>THR</Text>
       <View style={[styles.throttleTrackCompact, { height: sliderHeight, width: trackWidth }]} {...panResponder.panHandlers}>
         {/* Red "hot" zone at top */}
         <View style={styles.throttleHotZone} />
@@ -72,14 +75,18 @@ function ThrottleCompact() {
         <View style={[styles.throttleThumbCompact, { top: thumbPosition, backgroundColor: isHot ? tokens.colors.command.red : color }]} />
       </View>
       <Text style={[styles.throttleValueCompact, { color: isHot ? tokens.colors.command.red : color }]}>{Math.round(throttle.current * 100)}%</Text>
+      <View style={styles.skContainer}>
+        <Text style={styles.skLabel}>SK</Text>
+        <Text style={styles.skValue}>{metrics.speedDisplay}</Text>
+      </View>
     </View>
   );
 }
 
 /**
- * Ship vitals mini-gauges - labels under bars
+ * Ship vitals - bars with labels and percentage numbers
  */
-function ShipVitalsCompact() {
+function ShipVitalsSection() {
   const { profileId } = useAuth();
 
   const { data: ships } = useQuery({
@@ -106,25 +113,29 @@ function ShipVitalsCompact() {
   };
 
   return (
-    <View style={styles.vitalsContainer}>
+    <View style={styles.vitalsSection}>
+      <Text style={styles.controlLabel}>VITALS</Text>
       <View style={styles.vitalsRow}>
         <View style={styles.vitalItem}>
           <View style={styles.vitalBarVertical}>
             <View style={[styles.vitalBarFillVertical, { height: `${hullPct}%`, backgroundColor: getHullColor() }]} />
           </View>
-          <Text style={[styles.vitalLabelBelow, { color: getHullColor() }]}>HUL</Text>
+          <Text style={[styles.vitalLabelBelow, { color: getHullColor() }]}>H</Text>
+          <Text style={[styles.vitalValueBelow, { color: getHullColor() }]}>{Math.round(hullPct)}</Text>
         </View>
         <View style={styles.vitalItem}>
           <View style={styles.vitalBarVertical}>
             <View style={[styles.vitalBarFillVertical, { height: `${shieldPct}%`, backgroundColor: tokens.colors.command.blue }]} />
           </View>
-          <Text style={[styles.vitalLabelBelow, { color: tokens.colors.command.blue }]}>SHD</Text>
+          <Text style={[styles.vitalLabelBelow, { color: tokens.colors.command.blue }]}>S</Text>
+          <Text style={[styles.vitalValueBelow, { color: tokens.colors.command.blue }]}>{Math.round(shieldPct)}</Text>
         </View>
         <View style={styles.vitalItem}>
           <View style={styles.vitalBarVertical}>
             <View style={[styles.vitalBarFillVertical, { height: `${fuelPct}%`, backgroundColor: tokens.colors.operations.orange }]} />
           </View>
-          <Text style={[styles.vitalLabelBelow, { color: tokens.colors.operations.orange }]}>FUL</Text>
+          <Text style={[styles.vitalLabelBelow, { color: tokens.colors.operations.orange }]}>F</Text>
+          <Text style={[styles.vitalValueBelow, { color: tokens.colors.operations.orange }]}>{Math.round(fuelPct)}</Text>
         </View>
       </View>
     </View>
@@ -132,12 +143,12 @@ function ShipVitalsCompact() {
 }
 
 /**
- * Compact Attitude joystick for LCARS bar
+ * Compact Attitude joystick for LCARS bar - controls pitch/roll only
  */
 function AttitudeCompact() {
   const attitude = useFlightStore((s) => s.attitude);
-  const stickSize = 80;
-  const thumbSize = 24;
+  const stickSize = 100;
+  const thumbSize = 28;
   const maxOffset = (stickSize - thumbSize) / 2;
 
   const panResponder = useRef(
@@ -152,21 +163,19 @@ function AttitudeCompact() {
         const pitch = Math.max(-1, Math.min(1, -gestureState.dy / maxOffset));
         store.setRoll(roll);
         store.setPitch(pitch);
-        if (!store.axisCouplingEnabled) {
-          store.setYaw(roll * 0.5);
-        }
+        // Yaw is independent - controlled only by YawControl
       },
       onPanResponderRelease: () => {
         const store = useFlightStore.getState();
         store.setRoll(0);
         store.setPitch(0);
-        store.setYaw(0);
+        // Don't reset yaw - it's controlled independently
       },
       onPanResponderTerminate: () => {
         const store = useFlightStore.getState();
         store.setRoll(0);
         store.setPitch(0);
-        store.setYaw(0);
+        // Don't reset yaw - it's controlled independently
       },
     })
   ).current;
@@ -252,45 +261,50 @@ function ExitSection({ onExitFlight }: { onExitFlight?: () => void }) {
 }
 
 /**
- * Unified LCARS Control Bar - Contains ALL flight controls
+ * Combined Attitude + YAW control (stacked vertically)
  */
-function LCARSControlBar({ onExitFlight }: { onExitFlight?: () => void }) {
+function AttitudeYawSection() {
+  return (
+    <View style={styles.attitudeYawSection}>
+      <AttitudeCompact />
+      <YawControl />
+    </View>
+  );
+}
+
+/**
+ * Unified LCARS Control Bar - Contains ALL flight controls
+ * Exported for rendering at CockpitShell level for full-width display
+ */
+export function FlightLCARSBar({ onExitFlight }: { onExitFlight?: () => void }) {
   return (
     <View style={styles.controlBar}>
-      {/* Throttle - narrow section on left */}
+      {/* Throttle + Speed */}
       <View style={styles.controlSectionThrottle}>
-        <ThrottleCompact />
+        <ThrottleSpeedSection />
       </View>
 
       {/* Divider */}
       <View style={styles.divider} />
 
-      {/* Vitals */}
+      {/* Vitals with numbers */}
       <View style={styles.controlSectionVitals}>
-        <ShipVitalsCompact />
+        <ShipVitalsSection />
       </View>
 
       {/* Divider */}
       <View style={styles.divider} />
 
-      {/* Attitude */}
+      {/* Attitude + YAW stacked */}
       <View style={styles.controlSectionWide}>
-        <AttitudeCompact />
-      </View>
-
-      {/* Divider */}
-      <View style={styles.divider} />
-
-      {/* YAW */}
-      <View style={styles.controlSectionWide}>
-        <YawControl />
+        <AttitudeYawSection />
       </View>
 
       {/* Divider */}
       <View style={styles.divider} />
 
       {/* Exit */}
-      <View style={styles.controlSectionNarrow}>
+      <View style={styles.controlSectionExit}>
         <ExitSection onExitFlight={onExitFlight} />
       </View>
     </View>
@@ -344,11 +358,7 @@ export function FlightViewport({ onExitFlight }: FlightViewportProps) {
         />
       </View>
 
-      {/* Speed HUD overlay */}
-      <SpeedHUD />
-
-      {/* LCARS Control Bar - All controls unified at bottom */}
-      <LCARSControlBar onExitFlight={onExitFlight} />
+      {/* LCARS Control Bar rendered at CockpitShell level for full width */}
     </View>
   );
 }
@@ -420,24 +430,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   controlSectionThrottle: {
-    width: 40,
+    width: 50,
     alignItems: 'center',
     justifyContent: 'center',
     paddingLeft: 8,
   },
   controlSectionVitals: {
-    width: 70,
+    width: 80,
     alignItems: 'center',
     justifyContent: 'center',
   },
   controlSectionWide: {
-    flex: 1.3,
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 4,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
   controlSectionNarrow: {
     width: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  controlSectionExit: {
+    width: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -453,6 +468,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 4,
     textAlign: 'center',
+  },
+  // Throttle + Speed section
+  throttleSpeedSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Throttle compact
   throttleCompact: {
@@ -496,8 +516,29 @@ const styles = StyleSheet.create({
     fontFamily: tokens.typography.fontFamily.mono,
     marginTop: 3,
   },
+  // Station Keeping (SK) compact display
+  skContainer: {
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  skLabel: {
+    fontSize: 6,
+    fontWeight: '700',
+    color: tokens.colors.text.muted,
+    letterSpacing: 1,
+  },
+  skValue: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.colors.text.secondary,
+    fontFamily: tokens.typography.fontFamily.mono,
+  },
   // Vitals - vertical bars with labels below
   vitalsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vitalsSection: {
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -509,10 +550,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   vitalBarVertical: {
-    width: 12,
-    height: 60,
+    width: 14,
+    height: 130,
     backgroundColor: tokens.colors.console.hull,
-    borderRadius: 6,
+    borderRadius: 7,
     overflow: 'hidden',
     justifyContent: 'flex-end',
   },
@@ -525,6 +566,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: tokens.typography.fontFamily.mono,
     marginTop: 3,
+  },
+  vitalValueBelow: {
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: tokens.typography.fontFamily.mono,
+    marginTop: 1,
   },
   // Attitude compact
   attitudeCompact: {
@@ -609,9 +656,13 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.semantic.navigation,
     borderRadius: 10,
   },
+  // Attitude + YAW stacked section
+  attitudeYawSection: {
+    alignItems: 'center',
+    gap: 8,
+  },
   // Exit section
   exitSection: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

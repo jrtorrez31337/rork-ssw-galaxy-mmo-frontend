@@ -6,7 +6,7 @@ import { HeaderBar } from './HeaderBar';
 import { LeftRail } from './LeftRail';
 import { AlertOverlay } from './AlertOverlay';
 import { ContextualPanel, PanelRouter } from '@/components/panels';
-import { FlightViewport } from '@/components/viewport/FlightViewport';
+import { FlightViewport, FlightLCARSBar } from '@/components/viewport/FlightViewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 import { useCommandHandler } from '@/hooks/useCommandHandler';
 import { RespawnOverlay } from '@/components/respawn/RespawnOverlay';
@@ -134,6 +134,11 @@ export function CockpitShell({ children }: CockpitShellProps) {
           <AlertOverlay />
         </View>
       </View>
+
+      {/* Flight LCARS Bar - rendered at shell level for full width */}
+      {activeViewport === 'flight' && (
+        <FlightLCARSBar onExitFlight={handleExitFlight} />
+      )}
 
       {/* Combat HUD */}
       {profileId && <CombatHUD playerId={profileId} />}
