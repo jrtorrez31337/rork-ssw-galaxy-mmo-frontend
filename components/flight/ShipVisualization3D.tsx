@@ -76,6 +76,9 @@ const ENGINE_COLORS = {
   nozzleRim: '#444466',
 };
 
+// Light source position (normalized 0-1, from top-right)
+const LIGHT_SOURCE = { x: 0.8, y: 0.15 };
+
 /**
  * Starfield with depth layers
  */
@@ -122,6 +125,54 @@ function Starfield({ width, height, pitch, yaw }: {
           />
         );
       })}
+    </G>
+  );
+}
+
+/**
+ * Sun/Star light source - visible in scene
+ */
+function SunLight({ width, height, pitch, yaw }: {
+  width: number;
+  height: number;
+  pitch: number;
+  yaw: number;
+}) {
+  // Sun position with parallax (moves slower than close stars)
+  const baseX = LIGHT_SOURCE.x * width;
+  const baseY = LIGHT_SOURCE.y * height;
+  const offsetX = yaw * 8;
+  const offsetY = pitch * 8;
+  const sunX = baseX + offsetX;
+  const sunY = baseY + offsetY;
+
+  return (
+    <G>
+      <Defs>
+        <RadialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#ffffff" stopOpacity={1} />
+          <Stop offset="20%" stopColor="#ffffcc" stopOpacity={0.8} />
+          <Stop offset="50%" stopColor="#ffdd66" stopOpacity={0.3} />
+          <Stop offset="100%" stopColor="#ff8800" stopOpacity={0} />
+        </RadialGradient>
+        <RadialGradient id="sunCore" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#ffffff" stopOpacity={1} />
+          <Stop offset="60%" stopColor="#ffffee" stopOpacity={0.9} />
+          <Stop offset="100%" stopColor="#ffeeaa" stopOpacity={0.7} />
+        </RadialGradient>
+      </Defs>
+
+      {/* Outer glow */}
+      <Circle cx={sunX} cy={sunY} r={60} fill="url(#sunGlow)" />
+      {/* Lens flare rays */}
+      <Line x1={sunX - 40} y1={sunY} x2={sunX + 40} y2={sunY} stroke="#ffffff" strokeWidth={1} opacity={0.4} />
+      <Line x1={sunX} y1={sunY - 40} x2={sunX} y2={sunY + 40} stroke="#ffffff" strokeWidth={1} opacity={0.4} />
+      <Line x1={sunX - 28} y1={sunY - 28} x2={sunX + 28} y2={sunY + 28} stroke="#ffffff" strokeWidth={0.5} opacity={0.3} />
+      <Line x1={sunX + 28} y1={sunY - 28} x2={sunX - 28} y2={sunY + 28} stroke="#ffffff" strokeWidth={0.5} opacity={0.3} />
+      {/* Core */}
+      <Circle cx={sunX} cy={sunY} r={8} fill="url(#sunCore)" />
+      {/* Bright center */}
+      <Circle cx={sunX} cy={sunY} r={3} fill="#ffffff" />
     </G>
   );
 }
@@ -746,7 +797,8 @@ export function ShipVisualization3D({
   const throttle = useFlightStore((s) => s.throttle);
 
   const colors = SHIP_COLORS[shipType] || SHIP_COLORS.scout;
-  const shipSize = Math.min(size.width, size.height) * 0.7;
+  // Zoom out - ship takes up less of viewport for better perspective
+  const shipSize = Math.min(size.width, size.height) * 0.45;
 
   const shipProps = {
     colors,
@@ -778,6 +830,14 @@ export function ShipVisualization3D({
 
         {/* Starfield */}
         <Starfield
+          width={size.width}
+          height={size.height}
+          pitch={attitude.pitch.smoothed}
+          yaw={attitude.yaw.smoothed}
+        />
+
+        {/* Sun/Star light source */}
+        <SunLight
           width={size.width}
           height={size.height}
           pitch={attitude.pitch.smoothed}
