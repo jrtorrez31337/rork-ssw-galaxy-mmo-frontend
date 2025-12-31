@@ -1,207 +1,48 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
+import { Rocket, Wifi, WifiOff } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
-import { useShipStatus } from '@/hooks/useShipStatus';
-import { useSectorControl } from '@/hooks/useSectorControl';
 import { useAuth } from '@/contexts/AuthContext';
-import { useQuery } from '@tanstack/react-query';
-import { shipApi } from '@/api/ships';
-import { useFlightStore, selectThrottle, selectProfile } from '@/stores/flightStore';
-import { computeFlightMetrics, getThrottleColor, getSpeedStatus } from '@/lib/flight/metrics';
 import { ConnectionDot } from '@/components/hud/ConnectionStatus';
+import { useSSEConnectionStatus } from '@/contexts/SSEEventContext';
 
 /**
- * HeaderBar (Status Rail)
- * Per UI/UX Doctrine Section 2: Always visible, 48-56pt height
- * Shows: Ship name, Hull, Shield, Fuel, Location, Alert status
+ * HeaderBar - Command Console Top Bar
+ * Command Terminal aesthetic with animated glow logo
+ * Shows: Logo, player info (callsign, credits), connection status
  */
-
-interface VitalBarProps {
-  label: string;
-  current: number;
-  max: number;
-  color: string;
-  critical?: boolean;
-}
-
-/**
- * ThrottleIndicator - Per Cinematic Flight Doctrine §4.1
- * Shows throttle position and current speed
- * Always visible in persistent HUD
- */
-function ThrottleIndicator() {
-  const flightState = useFlightStore();
-  const metrics = computeFlightMetrics(flightState);
-  const throttleColor = getThrottleColor(metrics.throttlePercent);
-  const speedStatus = getSpeedStatus(metrics.speedPercent);
-
-  return (
-    <View style={styles.throttleContainer}>
-      <View style={styles.throttleHeader}>
-        <Text style={styles.throttleLabel}>THR</Text>
-        <Text style={[styles.throttleValue, { color: throttleColor }]}>
-          {metrics.throttleDisplay}
-        </Text>
-      </View>
-      <View style={styles.throttleBarOuter}>
-        <View
-          style={[
-            styles.throttleBarInner,
-            {
-              width: `${metrics.throttlePercent * 100}%`,
-              backgroundColor: throttleColor,
-            },
-          ]}
-        />
-        {/* Speed marker on throttle bar */}
-        <View
-          style={[
-            styles.speedMarker,
-            { left: `${metrics.speedPercent * 100}%` },
-          ]}
-        />
-      </View>
-      <Text style={styles.speedStatus}>{speedStatus}</Text>
-    </View>
-  );
-}
-
-function VitalBar({ label, current, max, color, critical }: VitalBarProps) {
-  const percentage = max > 0 ? (current / max) * 100 : 0;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (critical) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 0.4,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [critical, pulseAnim]);
-
-  return (
-    <Animated.View style={[styles.vitalContainer, { opacity: pulseAnim }]}>
-      <Text style={styles.vitalLabel}>{label}</Text>
-      <View style={styles.vitalBarOuter}>
-        <View
-          style={[
-            styles.vitalBarInner,
-            { width: `${percentage}%`, backgroundColor: color },
-          ]}
-        />
-      </View>
-      <Text style={[styles.vitalValue, { color }]}>
-        {Math.floor(percentage)}%
-      </Text>
-    </Animated.View>
-  );
-}
-
-/**
- * FactionControlBadge - Shows sector control status
- * Displays controlling faction color and contested/threat indicators
- */
-interface FactionControlBadgeProps {
-  sectorId: string | undefined;
-  playerFactionId?: string;
-}
-
-function FactionControlBadge({ sectorId, playerFactionId }: FactionControlBadgeProps) {
-  const { controlData, isLoading } = useSectorControl(sectorId, playerFactionId);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  // Pulse animation for contested zones
-  useEffect(() => {
-    if (controlData?.isContested) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 0.6,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [controlData?.isContested, pulseAnim]);
-
-  if (!sectorId || isLoading || !controlData) {
-    return null;
-  }
-
-  const { status, controllingFaction, isContested, threatLevel } = controlData;
-
-  // Don't show badge for neutral sectors with no significant faction presence
-  if (status === 'neutral' && !controllingFaction) {
-    return (
-      <View style={styles.controlBadge}>
-        <View style={[styles.controlDot, { backgroundColor: tokens.colors.text.tertiary }]} />
-        <Text style={styles.controlText}>NEUTRAL</Text>
-      </View>
-    );
-  }
-
-  const badgeColor = controllingFaction?.color || tokens.colors.text.tertiary;
-
-  return (
-    <Animated.View style={[styles.controlBadge, { opacity: pulseAnim }]}>
-      {/* Faction color dot */}
-      <View style={[styles.controlDot, { backgroundColor: badgeColor }]} />
-
-      {/* Faction name or status */}
-      <Text style={[styles.controlText, { color: badgeColor }]} numberOfLines={1}>
-        {isContested ? 'CONTESTED' : controllingFaction?.name?.split(' ')[0]?.toUpperCase() || 'UNKNOWN'}
-      </Text>
-
-      {/* Threat indicator for hostile territory */}
-      {threatLevel > 50 && (
-        <View style={styles.threatBadge}>
-          <Text style={styles.threatText}>!</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-}
 
 export function HeaderBar() {
-  const { profileId } = useAuth();
+  const { user } = useAuth();
   const alertLevel = useCockpitStore((s) => s.alertLevel);
-  const alertReason = useCockpitStore((s) => s.alertReason);
 
-  // Fetch current ship
-  const { data: ships } = useQuery({
-    queryKey: ['ships', profileId],
-    queryFn: () => shipApi.getByOwner(profileId!),
-    enabled: !!profileId,
-  });
+  // SSE connection status
+  const { isConnected } = useSSEConnectionStatus();
 
-  const currentShip = ships?.[0] || null;
-  const shipStatus = useShipStatus({
-    ship: currentShip,
-    characterId: profileId || undefined,
-  });
+  // Animated glow effect
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
-  // Alert indicator animation
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [glowAnim]);
+
+  // Alert pulse animation
   const alertPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -210,7 +51,7 @@ export function HeaderBar() {
         Animated.sequence([
           Animated.timing(alertPulse, {
             toValue: 1,
-            duration: 1000, // 0.5Hz per doctrine
+            duration: 1000,
             useNativeDriver: true,
           }),
           Animated.timing(alertPulse, {
@@ -225,41 +66,18 @@ export function HeaderBar() {
     }
   }, [alertLevel, alertPulse]);
 
-  const getAlertColor = () => {
-    switch (alertLevel) {
-      case 'red': return tokens.colors.alert.red;
-      case 'yellow': return tokens.colors.alert.yellow;
-      default: return tokens.colors.alert.green;
-    }
-  };
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.5, 1],
+  });
 
-  const getHullColor = () => {
-    if (!shipStatus) return tokens.colors.lcars.green;
-    const pct = shipStatus.hull.percentage;
-    if (pct < 25) return tokens.colors.lcars.red;
-    if (pct < 75) return tokens.colors.lcars.gold;
-    return tokens.colors.lcars.green;
-  };
-
-  const getShieldColor = () => {
-    if (!shipStatus || shipStatus.shield.percentage === 0) {
-      return tokens.colors.text.tertiary;
-    }
-    return tokens.colors.lcars.sky;
-  };
-
-  const getFuelColor = () => {
-    if (!shipStatus) return tokens.colors.lcars.gold;
-    if (shipStatus.fuel.percentage < 10) return tokens.colors.lcars.red;
-    if (shipStatus.fuel.percentage < 20) return tokens.colors.lcars.gold;
-    return tokens.colors.lcars.gold;
-  };
-
-  // Red alert overlay
   const alertOverlayOpacity = alertPulse.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 0.15],
   });
+
+  // Parse credits from string (API returns decimal string for precision)
+  const credits = user?.credits ? parseInt(user.credits, 10) : 0;
 
   return (
     <View style={styles.container}>
@@ -274,63 +92,53 @@ export function HeaderBar() {
         />
       )}
 
-      {/* Left: Ship identifier + Sector control */}
-      <View style={styles.leftSection}>
-        <Text style={styles.shipName} numberOfLines={1}>
-          {shipStatus?.shipName || 'NO SHIP'}
-        </Text>
-        <View style={styles.locationRow}>
-          <Text style={styles.location} numberOfLines={1}>
-            {shipStatus?.location || 'UNKNOWN'}
-          </Text>
-          <FactionControlBadge
-            sectorId={shipStatus?.location}
-            playerFactionId={undefined} // TODO: Get from player profile
-          />
-        </View>
-      </View>
-
-      {/* Center: Vitals + Throttle */}
-      <View style={styles.centerSection}>
-        <ThrottleIndicator />
-        <View style={styles.vitalsDivider} />
-        <VitalBar
-          label="HULL"
-          current={shipStatus?.hull.current || 0}
-          max={shipStatus?.hull.max || 100}
-          color={getHullColor()}
-          critical={shipStatus ? shipStatus.hull.percentage < 25 : false}
-        />
-        <VitalBar
-          label="SHLD"
-          current={shipStatus?.shield.current || 0}
-          max={shipStatus?.shield.max || 100}
-          color={getShieldColor()}
-        />
-        <VitalBar
-          label="FUEL"
-          current={shipStatus?.fuel.current || 0}
-          max={shipStatus?.fuel.max || 100}
-          color={getFuelColor()}
-          critical={shipStatus ? shipStatus.fuel.percentage < 10 : false}
-        />
-      </View>
-
-      {/* Right: Alert status + Connection */}
-      <View style={styles.rightSection}>
-        <View style={styles.rightRow}>
-          <ConnectionDot size="small" />
-          <View style={[styles.alertIndicator, { backgroundColor: getAlertColor() }]}>
-            <Text style={styles.alertText}>
-              {alertLevel.toUpperCase()}
-            </Text>
+      {/* Left: Logo Section */}
+      <View style={styles.logoSection}>
+        <Animated.View style={[styles.logoGlow, { opacity: glowOpacity }]}>
+          <Rocket size={24} color={tokens.colors.command.blue} />
+        </Animated.View>
+        <View style={styles.logoText}>
+          <Text style={styles.logoTitle}>SSW</Text>
+          <View style={styles.logoSubtitleContainer}>
+            <Text style={styles.logoSubtitle}>STARSCAPE</Text>
           </View>
         </View>
-        {alertReason && alertLevel !== 'green' && (
-          <Text style={styles.alertReason} numberOfLines={1}>
-            {alertReason}
+      </View>
+
+      {/* Center: Player Info */}
+      <View style={styles.statusSection}>
+        <View style={styles.playerInfo}>
+          <Text style={styles.callsign}>
+            {user?.display_name?.toUpperCase() || 'PILOT'}
           </Text>
-        )}
+          <Text style={styles.rank}>COMMANDER</Text>
+        </View>
+        <View style={styles.creditsBox}>
+          <Text style={styles.creditsLabel}>CR</Text>
+          <Text style={styles.creditsValue}>
+            {credits.toLocaleString()}
+          </Text>
+        </View>
+      </View>
+
+      {/* Right: Connection Status */}
+      <View style={styles.connectionSection}>
+        <View style={styles.connectionIndicator}>
+          {isConnected ? (
+            <Wifi size={16} color={tokens.colors.status.online} />
+          ) : (
+            <WifiOff size={16} color={tokens.colors.status.danger} />
+          )}
+          <Text
+            style={[
+              styles.connectionText,
+              { color: isConnected ? tokens.colors.status.online : tokens.colors.status.danger },
+            ]}
+          >
+            {isConnected ? 'LIVE' : 'OFFLINE'}
+          </Text>
+        </View>
+        <ConnectionDot size="small" />
       </View>
     </View>
   );
@@ -341,179 +149,105 @@ const styles = StyleSheet.create({
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: tokens.colors.background.panel,
+    justifyContent: 'space-between',
+    backgroundColor: tokens.colors.console.deepSpace,
     borderBottomWidth: 1,
     borderBottomColor: tokens.colors.border.default,
-    paddingHorizontal: tokens.spacing[3],
+    paddingHorizontal: tokens.spacing.md,
     overflow: 'hidden',
   },
   alertOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
-  leftSection: {
-    flex: 1,
-    minWidth: 80,
+  logoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
   },
-  shipName: {
-    fontSize: tokens.typography.fontSize.sm,
+  logoGlow: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: tokens.colors.console.hull,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: tokens.colors.command.blue,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+  },
+  logoText: {
+    flexDirection: 'column',
+  },
+  logoTitle: {
+    fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: tokens.typography.fontSize.xl,
     fontWeight: tokens.typography.fontWeight.bold,
-    color: tokens.colors.lcars.orange,
-    textTransform: 'uppercase',
+    color: tokens.colors.command.blue,
+    letterSpacing: 3,
   },
-  location: {
+  logoSubtitleContainer: {
+    borderLeftWidth: 0,
+  },
+  logoSubtitle: {
+    fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: 8,
+    color: tokens.colors.text.muted,
+    letterSpacing: 2,
+  },
+  statusSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.lg,
+  },
+  playerInfo: {
+    alignItems: 'flex-end',
+  },
+  callsign: {
+    fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: tokens.typography.fontSize.md,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.command.gold,
+    letterSpacing: 1,
+  },
+  rank: {
+    fontFamily: tokens.typography.fontFamily.mono,
     fontSize: tokens.typography.fontSize.xs,
     color: tokens.colors.text.secondary,
-    fontFamily: tokens.typography.fontFamily.mono,
   },
-  locationRow: {
+  creditsBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing[2],
-  },
-  controlBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: tokens.colors.background.tertiary,
+    backgroundColor: tokens.colors.console.hull,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
     borderRadius: tokens.radius.sm,
+    gap: tokens.spacing.xs,
   },
-  controlDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  controlText: {
-    fontSize: 8,
-    fontWeight: tokens.typography.fontWeight.bold,
-    color: tokens.colors.text.tertiary,
-    textTransform: 'uppercase',
-  },
-  threatBadge: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: tokens.colors.alert.red,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  threatText: {
-    fontSize: 8,
-    fontWeight: tokens.typography.fontWeight.bold,
-    color: tokens.colors.text.inverse,
-  },
-  centerSection: {
-    flex: 2,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: tokens.spacing[4],
-  },
-  vitalContainer: {
-    alignItems: 'center',
-    minWidth: 50,
-  },
-  vitalLabel: {
-    fontSize: 9,
-    fontWeight: tokens.typography.fontWeight.bold,
-    color: tokens.colors.text.tertiary,
-    marginBottom: 2,
-  },
-  vitalBarOuter: {
-    width: 40,
-    height: 6,
-    backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  vitalBarInner: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  vitalValue: {
-    fontSize: 10,
-    fontWeight: tokens.typography.fontWeight.semibold,
+  creditsLabel: {
     fontFamily: tokens.typography.fontFamily.mono,
-    marginTop: 2,
+    fontSize: tokens.typography.fontSize.xs,
+    color: tokens.colors.text.muted,
   },
-  rightSection: {
-    flex: 1,
-    alignItems: 'flex-end',
-    minWidth: 60,
-  },
-  rightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  alertIndicator: {
-    paddingHorizontal: tokens.spacing[2],
-    paddingVertical: 2,
-    borderRadius: tokens.radius.sm,
-  },
-  alertText: {
-    fontSize: 10,
-    fontWeight: tokens.typography.fontWeight.bold,
-    color: tokens.colors.text.inverse,
-    textTransform: 'uppercase',
-  },
-  alertReason: {
-    fontSize: 9,
-    color: tokens.colors.text.tertiary,
-    marginTop: 2,
-  },
-  // Throttle indicator styles (per Cinematic Flight Doctrine §4.1)
-  throttleContainer: {
-    alignItems: 'center',
-    minWidth: 55,
-  },
-  throttleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  throttleLabel: {
-    fontSize: 9,
-    fontWeight: tokens.typography.fontWeight.bold,
-    color: tokens.colors.text.tertiary,
-  },
-  throttleValue: {
-    fontSize: 10,
-    fontWeight: tokens.typography.fontWeight.bold,
+  creditsValue: {
     fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: tokens.typography.fontSize.sm,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.operations.engineering,
   },
-  throttleBarOuter: {
-    width: 48,
-    height: 8,
-    backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginTop: 2,
-    position: 'relative',
+  connectionSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
   },
-  throttleBarInner: {
-    height: '100%',
-    borderRadius: 4,
+  connectionIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
   },
-  speedMarker: {
-    position: 'absolute',
-    top: 0,
-    width: 2,
-    height: '100%',
-    backgroundColor: tokens.colors.text.primary,
-    marginLeft: -1,
-  },
-  speedStatus: {
-    fontSize: 8,
-    fontWeight: tokens.typography.fontWeight.semibold,
-    color: tokens.colors.text.tertiary,
-    marginTop: 1,
-    textTransform: 'uppercase',
-  },
-  vitalsDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: tokens.colors.border.default,
-    marginHorizontal: tokens.spacing[2],
+  connectionText: {
+    fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: tokens.typography.fontSize.xs,
+    letterSpacing: 1,
   },
 });
