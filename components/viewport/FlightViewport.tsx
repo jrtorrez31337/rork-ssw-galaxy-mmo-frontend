@@ -11,6 +11,10 @@ import { tokens } from '@/ui/theme';
 import { useFlightStore } from '@/stores/flightStore';
 import { ShipVisualization3D } from '@/components/flight/ShipVisualization3D';
 import { computeFlightMetrics, getSpeedStatus, getThrottleColor } from '@/lib/flight/metrics';
+import { useShipStatus } from '@/hooks/useShipStatus';
+import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { shipApi } from '@/api/ships';
 
 /**
  * FlightViewport - Dedicated flight mode viewport
@@ -199,14 +203,14 @@ function AttitudeControl() {
 }
 
 /**
- * Yaw pedal control
+ * Yaw pedal control - Horizontal version for bottom control bar
  */
-function YawControl() {
+function YawControlHorizontal() {
   const attitude = useFlightStore((s) => s.attitude);
   const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
 
-  const sliderWidth = 160;
-  const sliderHeight = 44;
+  const sliderWidth = 200;
+  const sliderHeight = 32;
 
   // Use getState() inside callbacks to avoid stale closures on iOS
   const panResponder = useRef(
@@ -223,40 +227,149 @@ function YawControl() {
         useFlightStore.getState().setYaw(0);
       },
       onPanResponderTerminate: () => {
-        // Also reset on terminate (iOS can terminate gestures)
         useFlightStore.getState().setYaw(0);
       },
     })
   ).current;
 
-  // Early return AFTER hooks and refs (React rules of hooks)
-  if (axisCouplingEnabled) return null;
-
-  const thumbWidth = 40;
+  const thumbWidth = 36;
   const thumbOffset = attitude.yaw.smoothed * (sliderWidth / 2 - thumbWidth / 2);
 
   return (
-    <View style={styles.yawContainer}>
-      <Text style={styles.yawLabel}>YAW</Text>
-      <View style={[styles.yawTrack, { width: sliderWidth, height: sliderHeight }]} {...panResponder.panHandlers}>
-        <View style={styles.yawCenter} />
+    <View style={styles.yawHorizontalContainer}>
+      <Text style={styles.yawHorizontalLabel}>◄</Text>
+      <View style={[styles.yawHorizontalTrack, { width: sliderWidth, height: sliderHeight }]} {...panResponder.panHandlers}>
+        <View style={styles.yawHorizontalCenter} />
+        {/* Tick marks */}
+        <View style={[styles.yawTick, { left: '25%' }]} />
+        <View style={[styles.yawTick, { left: '75%' }]} />
         <View
           style={[
-            styles.yawThumb,
+            styles.yawHorizontalThumb,
             {
               left: sliderWidth / 2 - thumbWidth / 2 + thumbOffset,
               width: thumbWidth,
-              height: sliderHeight - 8,
             },
           ]}
         />
+      </View>
+      <Text style={styles.yawHorizontalLabel}>►</Text>
+      {axisCouplingEnabled && (
+        <Text style={styles.yawCoupledBadge}>COUPLED</Text>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Ship vitals mini-gauges for flight control bar
+ */
+function ShipVitalsCompact() {
+  const { profileId } = useAuth();
+
+  const { data: ships } = useQuery({
+    queryKey: ['ships', profileId],
+    queryFn: () => shipApi.getByOwner(profileId!),
+    enabled: !!profileId,
+    staleTime: 5000,
+  });
+
+  const currentShip = ships?.[0] || null;
+  const shipStatus = useShipStatus({
+    ship: currentShip,
+    characterId: profileId || undefined,
+  });
+
+  const hullPct = shipStatus?.hull.percentage || 0;
+  const shieldPct = shipStatus?.shield.percentage || 0;
+  const fuelPct = shipStatus?.fuel.percentage || 0;
+
+  const getHullColor = () => {
+    if (hullPct < 25) return tokens.colors.alert.critical;
+    if (hullPct < 75) return tokens.colors.alert.warning;
+    return tokens.colors.status.online;
+  };
+
+  return (
+    <View style={styles.vitalsContainer}>
+      <View style={styles.vitalRow}>
+        <Text style={styles.vitalLabel}>HUL</Text>
+        <View style={styles.vitalBarContainer}>
+          <View style={[styles.vitalBarFill, { width: `${hullPct}%`, backgroundColor: getHullColor() }]} />
+        </View>
+        <Text style={[styles.vitalValue, { color: getHullColor() }]}>{Math.floor(hullPct)}</Text>
+      </View>
+      <View style={styles.vitalRow}>
+        <Text style={styles.vitalLabel}>SHD</Text>
+        <View style={styles.vitalBarContainer}>
+          <View style={[styles.vitalBarFill, { width: `${shieldPct}%`, backgroundColor: tokens.colors.command.blue }]} />
+        </View>
+        <Text style={[styles.vitalValue, { color: tokens.colors.command.blue }]}>{Math.floor(shieldPct)}</Text>
+      </View>
+      <View style={styles.vitalRow}>
+        <Text style={styles.vitalLabel}>FUL</Text>
+        <View style={styles.vitalBarContainer}>
+          <View style={[styles.vitalBarFill, { width: `${fuelPct}%`, backgroundColor: tokens.colors.operations.orange }]} />
+        </View>
+        <Text style={[styles.vitalValue, { color: tokens.colors.operations.orange }]}>{Math.floor(fuelPct)}</Text>
       </View>
     </View>
   );
 }
 
 /**
- * Flight HUD overlay
+ * Flight profile and readout display
+ */
+function FlightProfileDisplay() {
+  const profile = useFlightStore((s) => s.profile);
+  const attitude = useFlightStore((s) => s.attitude);
+  const axisCouplingEnabled = useFlightStore((s) => s.axisCouplingEnabled);
+
+  return (
+    <View style={styles.profileContainer}>
+      <Text style={styles.profileName}>{profile.name.toUpperCase()}</Text>
+      {axisCouplingEnabled && (
+        <Text style={styles.profileCoupling}>ROLL→YAW</Text>
+      )}
+      <View style={styles.attitudeReadoutCompact}>
+        <Text style={styles.readoutText}>
+          P:{(attitude.pitch.smoothed * 100).toFixed(0).padStart(4, ' ')}
+        </Text>
+        <Text style={styles.readoutText}>
+          R:{(attitude.roll.smoothed * 100).toFixed(0).padStart(4, ' ')}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Integrated LCARS-style flight control bar
+ */
+function FlightControlBar() {
+  return (
+    <View style={styles.controlBar}>
+      {/* Left: Ship Vitals */}
+      <View style={styles.controlBarLeft}>
+        <ShipVitalsCompact />
+      </View>
+
+      {/* Center: YAW Control */}
+      <View style={styles.controlBarCenter}>
+        <Text style={styles.controlBarLabel}>YAW</Text>
+        <YawControlHorizontal />
+      </View>
+
+      {/* Right: Flight Profile */}
+      <View style={styles.controlBarRight}>
+        <FlightProfileDisplay />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Flight HUD overlay - Speed display at top only
  */
 function FlightHUD() {
   const flightState = useFlightStore();
@@ -268,15 +381,6 @@ function FlightHUD() {
       <View style={styles.hudTop}>
         <Text style={styles.hudSpeedValue}>{metrics.speedDisplay}</Text>
         <Text style={styles.hudSpeedLabel}>{speedStatus}</Text>
-      </View>
-
-      <View style={styles.hudBottom}>
-        <Text style={styles.hudProfileLabel}>
-          {flightState.profile.name.toUpperCase()}
-        </Text>
-        {flightState.axisCouplingEnabled && (
-          <Text style={styles.hudCouplingBadge}>ROLL→YAW</Text>
-        )}
       </View>
 
       {flightState.controlsLocked && (
@@ -309,7 +413,7 @@ export function FlightViewport({ onExitFlight }: FlightViewportProps) {
       <View style={styles.shipContainer3D}>
         <ShipVisualization3D
           shipType={shipType}
-          size={{ width: SCREEN_WIDTH - 140, height: SCREEN_HEIGHT * 0.5 }}
+          size={{ width: SCREEN_WIDTH - 140, height: SCREEN_HEIGHT * 0.55 }}
         />
       </View>
 
@@ -321,11 +425,13 @@ export function FlightViewport({ onExitFlight }: FlightViewportProps) {
         <ThrottleControl />
       </View>
 
-      {/* Right side - Attitude */}
+      {/* Right side - Attitude only (YAW moved to bottom bar) */}
       <View style={styles.rightControls}>
         <AttitudeControl />
-        <YawControl />
       </View>
+
+      {/* Bottom - Integrated LCARS Control Bar */}
+      <FlightControlBar />
 
       {/* Exit button */}
       {onExitFlight && (
@@ -526,24 +632,6 @@ const styles = StyleSheet.create({
     color: tokens.colors.text.secondary,
     textTransform: 'uppercase',
   },
-  hudBottom: {
-    position: 'absolute',
-    bottom: 80,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  hudProfileLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: tokens.colors.semantic.navigation,
-  },
-  hudCouplingBadge: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: tokens.colors.lcars.orange,
-    marginTop: 4,
-  },
   hudLocked: {
     position: 'absolute',
     top: '50%',
@@ -580,5 +668,160 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: tokens.colors.text.secondary,
     textTransform: 'uppercase',
+  },
+  // LCARS-style Flight Control Bar
+  controlBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+    flexDirection: 'row',
+    backgroundColor: tokens.colors.console.deepSpace,
+    borderTopWidth: 2,
+    borderTopColor: tokens.colors.command.blue,
+  },
+  controlBarLeft: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: tokens.colors.border.default,
+  },
+  controlBarCenter: {
+    flex: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  controlBarRight: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    borderLeftWidth: 1,
+    borderLeftColor: tokens.colors.border.default,
+  },
+  controlBarLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.colors.text.tertiary,
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
+  // Horizontal YAW control
+  yawHorizontalContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  yawHorizontalLabel: {
+    fontSize: 14,
+    color: tokens.colors.semantic.navigation,
+    fontWeight: '700',
+  },
+  yawHorizontalTrack: {
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: tokens.colors.border.default,
+    position: 'relative',
+  },
+  yawHorizontalCenter: {
+    position: 'absolute',
+    left: '50%',
+    top: 4,
+    bottom: 4,
+    width: 2,
+    marginLeft: -1,
+    backgroundColor: tokens.colors.text.tertiary,
+    opacity: 0.5,
+  },
+  yawTick: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    width: 1,
+    backgroundColor: tokens.colors.text.tertiary,
+    opacity: 0.3,
+  },
+  yawHorizontalThumb: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    backgroundColor: tokens.colors.semantic.navigation,
+    borderRadius: 12,
+  },
+  yawCoupledBadge: {
+    position: 'absolute',
+    top: -12,
+    right: 0,
+    fontSize: 8,
+    fontWeight: '700',
+    color: tokens.colors.lcars.orange,
+    backgroundColor: tokens.colors.console.deepSpace,
+    paddingHorizontal: 4,
+  },
+  // Ship Vitals Compact
+  vitalsContainer: {
+    gap: 4,
+  },
+  vitalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  vitalLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: tokens.colors.text.muted,
+    width: 24,
+    fontFamily: tokens.typography.fontFamily.mono,
+  },
+  vitalBarContainer: {
+    width: 50,
+    height: 6,
+    backgroundColor: tokens.colors.console.hull,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  vitalBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  vitalValue: {
+    fontSize: 10,
+    fontWeight: '700',
+    width: 20,
+    textAlign: 'right',
+    fontFamily: tokens.typography.fontFamily.mono,
+  },
+  // Flight Profile Display
+  profileContainer: {
+    alignItems: 'flex-end',
+  },
+  profileName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tokens.colors.semantic.navigation,
+    fontFamily: tokens.typography.fontFamily.mono,
+  },
+  profileCoupling: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: tokens.colors.lcars.orange,
+    marginTop: 2,
+  },
+  attitudeReadoutCompact: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  readoutText: {
+    fontSize: 9,
+    fontFamily: tokens.typography.fontFamily.mono,
+    color: tokens.colors.text.tertiary,
   },
 });

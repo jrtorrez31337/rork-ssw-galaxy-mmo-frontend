@@ -140,11 +140,11 @@ export function CockpitShell({ children }: CockpitShellProps) {
         </View>
       </View>
 
-      {/* Status Bar - Ship vitals, location, cargo */}
-      <StatusBar />
+      {/* Status Bar - Ship vitals, location, cargo (hidden in flight mode) */}
+      {activeViewport !== 'flight' && <StatusBar />}
 
-      {/* Command Bar - Actions */}
-      <CommandBar />
+      {/* Command Bar - Actions (hidden in flight mode) */}
+      {activeViewport !== 'flight' && <CommandBar />}
 
       {/* Combat HUD */}
       {profileId && <CombatHUD playerId={profileId} />}
