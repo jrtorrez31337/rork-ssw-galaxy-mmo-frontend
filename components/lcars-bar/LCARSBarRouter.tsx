@@ -2,6 +2,7 @@ import React from 'react';
 import { useCockpitStore, RailSystem } from '@/stores/cockpitStore';
 import { NavLCARSContent } from './content/NavLCARSContent';
 import { FleetLCARSContent } from './content/FleetLCARSContent';
+import { FlightControlsContent } from './content/FlightControlsContent';
 import { OpsLCARSContent } from './content/OpsLCARSContent';
 import { TacLCARSContent } from './content/TacLCARSContent';
 import { EngLCARSContent } from './content/EngLCARSContent';
@@ -17,6 +18,9 @@ import { CommsLCARSContent } from './content/CommsLCARSContent';
  * - TAC: Tactical (combat, scanning, targeting)
  * - ENG: Engineering (ship systems, repairs, upgrades)
  * - COM: Communications (chat, messages, faction comms)
+ *
+ * Special case: When in flight mode (activeViewport === 'flight'),
+ * always show FlightControlsContent regardless of activeRail.
  */
 
 const LCARS_CONTENT_MAP: Record<RailSystem, React.ComponentType> = {
@@ -30,7 +34,13 @@ const LCARS_CONTENT_MAP: Record<RailSystem, React.ComponentType> = {
 
 export function LCARSBarRouter() {
   const activeRail = useCockpitStore((s) => s.activeRail);
-  const Content = LCARS_CONTENT_MAP[activeRail];
+  const activeViewport = useCockpitStore((s) => s.activeViewport);
 
+  // Flight mode overrides normal rail content
+  if (activeViewport === 'flight') {
+    return <FlightControlsContent />;
+  }
+
+  const Content = LCARS_CONTENT_MAP[activeRail];
   return <Content />;
 }
