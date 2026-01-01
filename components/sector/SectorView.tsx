@@ -1,11 +1,11 @@
 /**
  * SectorView - Sector visualization component
  *
- * Currently renders 2D vector view.
+ * Currently renders 2D vector view via SectorGrid.
  * 3D WebGL view planned for future when native build is available.
  */
 
-import SectorView2D from '@/components/npc/SectorView2D';
+import { SectorGrid } from '@/components/viewport/SectorGrid';
 import type { NPCEntity } from '@/types/combat';
 import type { Station } from '@/types/movement';
 import type { SectorShip } from '@/api/sectorEntities';
@@ -23,5 +23,5 @@ interface SectorViewProps {
 }
 
 export default function SectorView(props: SectorViewProps) {
-  return <SectorView2D {...props} />;
+  return <SectorGrid {...props} />;
 }

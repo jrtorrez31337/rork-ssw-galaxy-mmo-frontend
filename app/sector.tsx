@@ -31,9 +31,9 @@ export default function SectorScreen() {
   const router = useRouter();
   const { user } = useAuth();
 
-  // Auto-redirect to Map tab (sector view is now integrated there)
+  // Auto-redirect to main view (sector view is now in Viewscreen)
   useEffect(() => {
-    router.replace('/(tabs)/map');
+    router.replace('/(tabs)');
   }, [router]);
   const [isLoadingNPCs, setIsLoadingNPCs] = useState(false);
   const [currentSector] = useState('0,0,0'); // TODO: Get from ship/player state

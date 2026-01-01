@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, ReactNode } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
@@ -6,7 +6,7 @@ import { HeaderBar } from './HeaderBar';
 import { LeftRail } from './LeftRail';
 import { AlertOverlay } from './AlertOverlay';
 import { UnifiedLCARSBar } from '@/components/lcars-bar';
-import { FlightViewport } from '@/components/viewport/FlightViewport';
+import { Viewscreen } from '@/components/viewport';
 import { useFlightTick, useFlightIntegration } from '@/hooks/useFlightIntegration';
 import { useCommandHandler } from '@/hooks/useCommandHandler';
 import { RespawnOverlay } from '@/components/respawn/RespawnOverlay';
@@ -40,11 +40,9 @@ import { useAuth } from '@/contexts/AuthContext';
  *
  * The UnifiedLCARSBar replaces the old popup ContextualPanel.
  * Rail selection (NAV/FLT/OPS/TAC/ENG/COM) switches bar content.
+ *
+ * Viewscreen handles all content routing based on activeViewport state.
  */
-
-interface CockpitShellProps {
-  children: ReactNode;
-}
 
 // Mount counter to verify shell never remounts
 let shellMountCount = 0;
@@ -52,10 +50,9 @@ let shellMountCount = 0;
 // Flag to track if initial navigation is complete
 let initialNavigationComplete = false;
 
-export function CockpitShell({ children }: CockpitShellProps) {
+export function CockpitShell() {
   const markShellMounted = useCockpitStore((s) => s.markShellMounted);
   const shellMounted = useCockpitStore((s) => s.shellMounted);
-  const activeViewport = useCockpitStore((s) => s.activeViewport);
   const mountId = useRef<number | null>(null);
 
   // Get player ID for combat HUD
@@ -110,15 +107,9 @@ export function CockpitShell({ children }: CockpitShellProps) {
         {/* Left Navigation Rail */}
         <LeftRail />
 
-        {/* Primary Viewport */}
+        {/* Primary Viewport - Viewscreen routes all content */}
         <View style={styles.viewport}>
-          <View style={styles.contentArea}>
-            {activeViewport === 'flight' ? (
-              <FlightViewport />
-            ) : (
-              children
-            )}
-          </View>
+          <Viewscreen />
 
           {/* Alert overlay */}
           <AlertOverlay />
@@ -165,8 +156,5 @@ const styles = StyleSheet.create({
   viewport: {
     flex: 1,
     backgroundColor: tokens.colors.console.nebula,
-  },
-  contentArea: {
-    flex: 1,
   },
 });

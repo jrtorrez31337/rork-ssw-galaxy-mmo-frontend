@@ -1,4 +1,3 @@
-import { Slot } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { tokens } from '@/ui/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -7,15 +6,13 @@ import { CockpitShell } from '@/components/shell';
 /**
  * Tab Layout - LCARS Cockpit Shell
  *
- * Per UI/UX Doctrine and Implementation Architecture:
+ * Per UI/UX Doctrine and Viewscreen Architecture:
  * - CockpitShell wraps all game content
  * - Shell MUST NEVER remount during session
  * - HeaderBar, LeftRail are persistent
- * - Tab router hidden; LeftRail handles navigation state
- * - Content renders inside shell viewport via Slot
+ * - Viewscreen handles all content routing based on activeViewport state
  *
- * Navigation is now state-based (via cockpitStore), not route-based.
- * The Slot renders whichever tab content is currently active.
+ * Navigation is state-based (via cockpitStore), not route-based.
  */
 
 export default function TabLayout() {
@@ -25,10 +22,7 @@ export default function TabLayout() {
         style={{ flex: 1, backgroundColor: tokens.colors.background.primary }}
         edges={['top', 'bottom']}
       >
-        <CockpitShell>
-          {/* Tab content renders here inside the viewport */}
-          <Slot />
-        </CockpitShell>
+        <CockpitShell />
       </SafeAreaView>
     </ErrorBoundary>
   );
