@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, LayoutChangeEvent, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Svg, { Circle, Polygon, Text as SvgText, G, Line, Rect } from 'react-native-svg';
 import {
@@ -32,7 +32,7 @@ import type { SectorShip } from '@/api/sectorEntities';
 // Sector dimensions: 20,000 units cubed (-10k to +10k on each axis)
 const SECTOR_SIZE = 20000;
 
-interface SectorView2DProps {
+interface SectorGridProps {
   npcs: NPCEntity[];
   playerPosition?: [number, number, number];
   onNPCPress?: (npc: NPCEntity) => void;
@@ -48,10 +48,13 @@ interface SectorView2DProps {
 }
 
 /**
- * 2D vector display of sector
- * Shows player ship and NPCs as vector graphics
+ * SectorGrid - 2D vector display of sector space
+ *
+ * Pure visualization component - no chrome, no overlays.
+ * Shows player ship, NPCs, stations, and other ships as vector graphics.
+ * Supports pinch-to-zoom and pan gestures.
  */
-export default function SectorView2D({
+export function SectorGrid({
   npcs,
   playerPosition,
   onNPCPress,
@@ -61,18 +64,17 @@ export default function SectorView2D({
   dbStations = [],
   otherShips = [],
   currentShipId,
-}: SectorView2DProps) {
-  // Get initial screen width, then update from layout
-  const screenWidth = Dimensions.get('window').width;
-  const [containerWidth, setContainerWidth] = useState(screenWidth - 32);
+}: SectorGridProps) {
+  // Container dimensions - start at 0 to force measurement
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-  // Handle container layout to get actual width
+  // Handle container layout to get actual dimensions
   const onContainerLayout = useCallback((event: LayoutChangeEvent) => {
-    const { width } = event.nativeEvent.layout;
-    if (width > 0 && width !== containerWidth) {
-      setContainerWidth(width);
+    const { width, height } = event.nativeEvent.layout;
+    if (width > 0 && height > 0) {
+      setContainerSize({ width, height });
     }
-  }, [containerWidth]);
+  }, []);
 
   // Gesture state for pinch-to-zoom and pan
   const scale = useSharedValue(1);
@@ -155,9 +157,11 @@ export default function SectorView2D({
   // Get current sector data
   const sector = sectorId ? getSector(sectorId) : null;
 
-  // Calculate view size based on container width (with padding)
-  // Use 300 as minimum/fallback until layout is measured
-  const VIEW_SIZE = containerWidth > 32 ? containerWidth - 32 : 300;
+  // Use full container dimensions for the viewport
+  const VIEW_WIDTH = containerSize.width;
+  const VIEW_HEIGHT = containerSize.height;
+  // For sector calculations, use the smaller dimension to maintain proper scale
+  const VIEW_SIZE = Math.min(VIEW_WIDTH, VIEW_HEIGHT);
 
   // Scale factor for procgen markers (VIEW_SIZE pixels = SECTOR_SIZE units)
   const SCALE = VIEW_SIZE / SECTOR_SIZE;
@@ -180,102 +184,108 @@ export default function SectorView2D({
     return `${x},${y - size} ${x - size/2},${y + size/2} ${x + size/2},${y + size/2}`;
   };
 
-  // Ensure we have valid dimensions
-  if (VIEW_SIZE <= 0 || !Number.isFinite(VIEW_SIZE)) {
+  // Wait for container to be measured
+  if (containerSize.width === 0 || containerSize.height === 0 || VIEW_SIZE <= 0) {
     return (
       <View style={styles.container} onLayout={onContainerLayout}>
-        <View style={[styles.loadingContainer, { height: 300 }]}>
-          <Text style={styles.loadingText}>Loading sector view...</Text>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Initializing sector view...</Text>
         </View>
       </View>
     );
   }
 
+  // Calculate offset to center the square sector area within the viewport
+  const offsetX = (VIEW_WIDTH - VIEW_SIZE) / 2;
+  const offsetY = (VIEW_HEIGHT - VIEW_SIZE) / 2;
+
   return (
     <View style={styles.container} onLayout={onContainerLayout}>
       {/* Sector Map with Territory Overlay */}
-      <View style={[styles.mapContainer, { width: VIEW_SIZE, height: VIEW_SIZE, overflow: 'hidden' }]}>
+      <View style={styles.mapContainer}>
         <GestureDetector gesture={composedGesture}>
-          <Animated.View style={[{ width: VIEW_SIZE, height: VIEW_SIZE }, animatedStyle]}>
-            <View style={[styles.svgContainer, { width: VIEW_SIZE, height: VIEW_SIZE }]}>
+          <Animated.View style={[{ width: VIEW_WIDTH, height: VIEW_HEIGHT }, animatedStyle]}>
+            <View style={[styles.svgContainer, { width: VIEW_WIDTH, height: VIEW_HEIGHT }]}>
               {/* Grid background */}
               <Svg
-                width={VIEW_SIZE}
-                height={VIEW_SIZE}
-                viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
+                width={VIEW_WIDTH}
+                height={VIEW_HEIGHT}
+                viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
               >
-        {/* Background rect */}
+        {/* Background rect - fills entire viewport */}
         <Rect
           x={0}
           y={0}
-          width={VIEW_SIZE}
-          height={VIEW_SIZE}
+          width={VIEW_WIDTH}
+          height={VIEW_HEIGHT}
           fill={Colors.background}
         />
 
-        {/* Territory Border - faction control indicator */}
-        <TerritoryBorder viewSize={VIEW_SIZE} controlData={controlData} />
+        {/* Sector content group - centered in viewport */}
+        <G transform={`translate(${offsetX}, ${offsetY})`}>
+          {/* Territory Border - faction control indicator */}
+          <TerritoryBorder viewSize={VIEW_SIZE} controlData={controlData} />
 
-        {/* Grid lines (toggleable) */}
-        {sectorGridEnabled && (
-          <G opacity={0.3}>
-            {[...Array(11)].map((_, i) => {
-              const pos = (i / 10) * VIEW_SIZE;
-              return (
-                <G key={i}>
-                  <Line
-                    x1={pos}
-                    y1={0}
-                    x2={pos}
-                    y2={VIEW_SIZE}
-                    stroke={Colors.text}
-                    strokeWidth={1}
-                  />
-                  <Line
-                    x1={0}
-                    y1={pos}
-                    x2={VIEW_SIZE}
-                    y2={pos}
-                    stroke={Colors.text}
-                    strokeWidth={1}
-                  />
-                </G>
-              );
-            })}
+          {/* Grid lines (toggleable) */}
+          {sectorGridEnabled && (
+            <G opacity={0.3}>
+              {[...Array(11)].map((_, i) => {
+                const pos = (i / 10) * VIEW_SIZE;
+                return (
+                  <G key={i}>
+                    <Line
+                      x1={pos}
+                      y1={0}
+                      x2={pos}
+                      y2={VIEW_SIZE}
+                      stroke={Colors.text}
+                      strokeWidth={1}
+                    />
+                    <Line
+                      x1={0}
+                      y1={pos}
+                      x2={VIEW_SIZE}
+                      y2={pos}
+                      stroke={Colors.text}
+                      strokeWidth={1}
+                    />
+                  </G>
+                );
+              })}
+            </G>
+          )}
+
+          {/* Center crosshair */}
+          <G>
+            <Line
+              x1={VIEW_SIZE / 2 - 30}
+              y1={VIEW_SIZE / 2}
+              x2={VIEW_SIZE / 2 + 30}
+              y2={VIEW_SIZE / 2}
+              stroke={Colors.primary}
+              strokeWidth={3}
+              opacity={0.8}
+            />
+            <Line
+              x1={VIEW_SIZE / 2}
+              y1={VIEW_SIZE / 2 - 30}
+              x2={VIEW_SIZE / 2}
+              y2={VIEW_SIZE / 2 + 30}
+              stroke={Colors.primary}
+              strokeWidth={3}
+              opacity={0.8}
+            />
+            {/* Center circle */}
+            <Circle
+              cx={VIEW_SIZE / 2}
+              cy={VIEW_SIZE / 2}
+              r={8}
+              fill="none"
+              stroke={Colors.primary}
+              strokeWidth={2}
+              opacity={0.8}
+            />
           </G>
-        )}
-
-        {/* Center crosshair */}
-        <G>
-          <Line
-            x1={VIEW_SIZE / 2 - 30}
-            y1={VIEW_SIZE / 2}
-            x2={VIEW_SIZE / 2 + 30}
-            y2={VIEW_SIZE / 2}
-            stroke={Colors.primary}
-            strokeWidth={3}
-            opacity={0.8}
-          />
-          <Line
-            x1={VIEW_SIZE / 2}
-            y1={VIEW_SIZE / 2 - 30}
-            x2={VIEW_SIZE / 2}
-            y2={VIEW_SIZE / 2 + 30}
-            stroke={Colors.primary}
-            strokeWidth={3}
-            opacity={0.8}
-          />
-          {/* Center circle */}
-          <Circle
-            cx={VIEW_SIZE / 2}
-            cy={VIEW_SIZE / 2}
-            r={8}
-            fill="none"
-            stroke={Colors.primary}
-            strokeWidth={2}
-            opacity={0.8}
-          />
-        </G>
 
         {/* Procgen Content - rendered below ships for layering */}
         {showProcgen && sector && (
@@ -540,6 +550,7 @@ export default function SectorView2D({
             </G>
           );
               })}
+        </G>
               </Svg>
             </View>
           </Animated.View>
@@ -561,29 +572,21 @@ export default function SectorView2D({
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
+    flex: 1,
+    backgroundColor: Colors.background,
   },
   loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-    backgroundColor: Colors.background,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: Colors.border,
   },
   loadingText: {
     color: Colors.textSecondary,
     fontSize: 14,
   },
   mapContainer: {
-    position: 'relative',
-    backgroundColor: Colors.background,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: Colors.border,
+    flex: 1,
+    overflow: 'hidden',
   },
   svgContainer: {
     backgroundColor: Colors.background,

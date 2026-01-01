@@ -1,9 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import { Rocket, Wifi, WifiOff } from 'lucide-react-native';
+import { Rocket, Wifi, WifiOff, MapPin } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { shipApi } from '@/api/ships';
+import { useProcgenStore, selectCurrentSectorMetadata } from '@/stores/procgenStore';
 import { ConnectionDot } from '@/components/hud/ConnectionStatus';
 import { useSSEConnectionStatus } from '@/contexts/SSEEventContext';
 
@@ -14,8 +17,22 @@ import { useSSEConnectionStatus } from '@/contexts/SSEEventContext';
  */
 
 export function HeaderBar() {
-  const { user } = useAuth();
+  const { user, profileId } = useAuth();
   const alertLevel = useCockpitStore((s) => s.alertLevel);
+
+  // Get current ship for sector coordinates
+  const { data: ships } = useQuery({
+    queryKey: ['ships', profileId],
+    queryFn: () => shipApi.getByOwner(profileId!),
+    enabled: !!profileId,
+  });
+  const currentShip = ships?.[0] || null;
+  const sectorCoords = currentShip?.current_sector || '0.0.0';
+
+  // Get sector metadata (name, faction) from procgen store
+  const sectorMetadata = useProcgenStore(selectCurrentSectorMetadata);
+  const sectorName = sectorMetadata?.name || 'Unknown Sector';
+  const factionTag = sectorMetadata?.factionTag || null;
 
   // SSE connection status
   const { isConnected } = useSSEConnectionStatus();
@@ -118,6 +135,20 @@ export function HeaderBar() {
           <Text style={styles.creditsValue}>
             {credits.toLocaleString()}
           </Text>
+        </View>
+      </View>
+
+      {/* Center-Right: Sector Info */}
+      <View style={styles.sectorSection}>
+        <View style={styles.sectorInfo}>
+          <MapPin size={14} color={tokens.colors.command.gold} />
+          <Text style={styles.sectorName}>{sectorName}</Text>
+        </View>
+        <View style={styles.sectorMeta}>
+          <Text style={styles.sectorCoords}>{sectorCoords}</Text>
+          {factionTag && (
+            <Text style={styles.factionTag}>[{factionTag}]</Text>
+          )}
         </View>
       </View>
 
@@ -234,6 +265,36 @@ const styles = StyleSheet.create({
     fontSize: tokens.typography.fontSize.sm,
     fontWeight: tokens.typography.fontWeight.bold,
     color: tokens.colors.operations.engineering,
+  },
+  sectorSection: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+  },
+  sectorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  sectorName: {
+    fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: tokens.typography.fontSize.sm,
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.command.gold,
+  },
+  sectorMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  sectorCoords: {
+    fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: tokens.typography.fontSize.xs,
+    color: tokens.colors.text.secondary,
+  },
+  factionTag: {
+    fontFamily: tokens.typography.fontFamily.mono,
+    fontSize: tokens.typography.fontSize.xs,
+    color: tokens.colors.text.muted,
   },
   connectionSection: {
     flexDirection: 'row',

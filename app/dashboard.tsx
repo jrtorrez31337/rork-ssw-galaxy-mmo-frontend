@@ -28,7 +28,7 @@ export default function DashboardScreen() {
 
   // Auto-redirect to new tab navigation
   useEffect(() => {
-    router.replace('/(tabs)/map');
+    router.replace('/(tabs)');
   }, [router]);
 
   const [selectedShip, setSelectedShip] = useState<ShipType | null>(null);
