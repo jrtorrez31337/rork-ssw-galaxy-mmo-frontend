@@ -52,6 +52,14 @@ const VIEW_PROJECTIONS: Record<SectorViewMode, ViewProjection> = {
     flipY: false,
     flipDepth: true,   // Higher Z is closer (toward camera above)
   },
+  'bottom': {
+    screenX: 'x',
+    screenY: 'y',
+    depthAxis: 'z',
+    flipX: false,
+    flipY: true,       // Looking up from below, Y is flipped
+    flipDepth: false,  // Lower Z is closer (toward camera below)
+  },
   'side-left': {
     screenX: 'z',
     screenY: 'y',
@@ -189,6 +197,8 @@ export function getViewModeDescription(viewMode: SectorViewMode): string {
   switch (viewMode) {
     case 'top-down':
       return 'Looking down from above. X is left-right, Y is up-down, Z is depth.';
+    case 'bottom':
+      return 'Looking up from below. X is left-right, Y is up-down (flipped), Z is depth.';
     case 'side-left':
       return 'Looking from the left. Z is left-right, Y is up-down, X is depth.';
     case 'side-right':

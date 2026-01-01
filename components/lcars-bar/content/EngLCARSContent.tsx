@@ -1,19 +1,20 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Wrench, Zap, Activity, AlertCircle } from 'lucide-react-native';
+import { Wrench, Zap, Activity, AlertCircle, Gauge, Settings } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useShipStatus } from '@/hooks/useShipStatus';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
+import { SwipeableLCARSContainer } from '../SwipeableLCARSContainer';
 
 /**
  * EngLCARSContent - Engineering controls for the unified LCARS bar
  *
- * Layout: [System Status] | [Power Distribution] | [Reactor] | [Repair Queue]
+ * Pages: Systems | Power Distribution | Reactor & Repair
  */
 
-function SystemStatusSection() {
+function SystemsPage() {
   const { profileId } = useAuth();
 
   const { data: ships } = useQuery({
@@ -30,7 +31,8 @@ function SystemStatusSection() {
   });
 
   const hullPct = shipStatus?.hull.percentage || 100;
-  const systemsOnline = hullPct > 50 ? 'ALL' : hullPct > 25 ? 'PARTIAL' : 'CRITICAL';
+  const shieldPct = shipStatus?.shield.percentage || 100;
+  const systemsOnline = hullPct > 50 ? 'ALL SYSTEMS ONLINE' : hullPct > 25 ? 'PARTIAL SYSTEMS' : 'CRITICAL';
 
   const getStatusColor = () => {
     if (hullPct > 75) return tokens.colors.status.online;
@@ -39,18 +41,35 @@ function SystemStatusSection() {
   };
 
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>SYSTEMS</Text>
+    <View style={styles.page}>
+      <Text style={styles.pageTitle}>SYSTEMS STATUS</Text>
+
       <View style={[styles.statusBadge, { borderColor: getStatusColor() }]}>
-        <Activity size={14} color={getStatusColor()} />
+        <Activity size={18} color={getStatusColor()} />
         <Text style={[styles.statusText, { color: getStatusColor() }]}>{systemsOnline}</Text>
       </View>
-      <Text style={styles.hullText}>HULL: {Math.round(hullPct)}%</Text>
+
+      <View style={styles.vitalBars}>
+        <View style={styles.vitalItem}>
+          <Text style={styles.vitalLabel}>HULL</Text>
+          <View style={styles.vitalBar}>
+            <View style={[styles.vitalFill, { width: `${hullPct}%`, backgroundColor: getStatusColor() }]} />
+          </View>
+          <Text style={[styles.vitalValue, { color: getStatusColor() }]}>{Math.round(hullPct)}%</Text>
+        </View>
+        <View style={styles.vitalItem}>
+          <Text style={styles.vitalLabel}>SHIELD</Text>
+          <View style={styles.vitalBar}>
+            <View style={[styles.vitalFill, { width: `${shieldPct}%`, backgroundColor: tokens.colors.command.blue }]} />
+          </View>
+          <Text style={[styles.vitalValue, { color: tokens.colors.command.blue }]}>{Math.round(shieldPct)}%</Text>
+        </View>
+      </View>
     </View>
   );
 }
 
-function PowerDistributionSection() {
+function PowerPage() {
   // TODO: Connect to power distribution state
   const powerLevels = {
     weapons: 33,
@@ -58,177 +77,207 @@ function PowerDistributionSection() {
     engines: 34,
   };
 
+  const total = powerLevels.weapons + powerLevels.shields + powerLevels.engines;
+
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>POWER</Text>
-      <View style={styles.powerBars}>
-        <View style={styles.powerItem}>
-          <Text style={styles.powerLabel}>WPN</Text>
-          <View style={styles.powerBar}>
-            <View style={[styles.powerFill, styles.powerWeapons, { width: `${powerLevels.weapons}%` }]} />
+    <View style={styles.page}>
+      <Text style={styles.pageTitle}>POWER DISTRIBUTION</Text>
+
+      <View style={styles.powerGrid}>
+        <View style={styles.powerSection}>
+          <Zap size={24} color={tokens.colors.semantic.combat} />
+          <Text style={styles.powerLabel}>WEAPONS</Text>
+          <View style={styles.powerBarContainer}>
+            <View style={styles.powerBar}>
+              <View style={[styles.powerFill, styles.powerWeapons, { width: `${powerLevels.weapons}%` }]} />
+            </View>
           </View>
+          <Text style={[styles.powerValue, { color: tokens.colors.semantic.combat }]}>{powerLevels.weapons}%</Text>
         </View>
-        <View style={styles.powerItem}>
-          <Text style={styles.powerLabel}>SHD</Text>
-          <View style={styles.powerBar}>
-            <View style={[styles.powerFill, styles.powerShields, { width: `${powerLevels.shields}%` }]} />
+
+        <View style={styles.powerSection}>
+          <Settings size={24} color={tokens.colors.command.blue} />
+          <Text style={styles.powerLabel}>SHIELDS</Text>
+          <View style={styles.powerBarContainer}>
+            <View style={styles.powerBar}>
+              <View style={[styles.powerFill, styles.powerShields, { width: `${powerLevels.shields}%` }]} />
+            </View>
           </View>
+          <Text style={[styles.powerValue, { color: tokens.colors.command.blue }]}>{powerLevels.shields}%</Text>
         </View>
-        <View style={styles.powerItem}>
-          <Text style={styles.powerLabel}>ENG</Text>
-          <View style={styles.powerBar}>
-            <View style={[styles.powerFill, styles.powerEngines, { width: `${powerLevels.engines}%` }]} />
+
+        <View style={styles.powerSection}>
+          <Gauge size={24} color={tokens.colors.semantic.navigation} />
+          <Text style={styles.powerLabel}>ENGINES</Text>
+          <View style={styles.powerBarContainer}>
+            <View style={styles.powerBar}>
+              <View style={[styles.powerFill, styles.powerEngines, { width: `${powerLevels.engines}%` }]} />
+            </View>
           </View>
+          <Text style={[styles.powerValue, { color: tokens.colors.semantic.navigation }]}>{powerLevels.engines}%</Text>
         </View>
       </View>
+
+      <Text style={styles.totalPower}>TOTAL: {total}%</Text>
     </View>
   );
 }
 
-function ReactorSection() {
+function ReactorRepairPage() {
   // TODO: Connect to reactor state
   const reactorOutput = 85;
   const reactorTemp = 'NOMINAL';
-
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>REACTOR</Text>
-      <View style={styles.reactorGauge}>
-        <Zap size={24} color={tokens.colors.lcars.peach} />
-        <Text style={styles.reactorValue}>{reactorOutput}%</Text>
-      </View>
-      <Text style={styles.reactorTemp}>{reactorTemp}</Text>
-    </View>
-  );
-}
-
-function RepairQueueSection() {
-  // TODO: Connect to repair queue state
   const repairsNeeded = 0;
   const isRepairing = false;
 
+  const getTempColor = () => {
+    if (reactorTemp === 'NOMINAL') return tokens.colors.status.online;
+    if (reactorTemp === 'ELEVATED') return tokens.colors.alert.warning;
+    return tokens.colors.alert.critical;
+  };
+
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>REPAIR</Text>
-      {repairsNeeded > 0 || isRepairing ? (
-        <View style={styles.repairInfo}>
-          <AlertCircle size={16} color={tokens.colors.alert.warning} />
-          <Text style={styles.repairText}>{repairsNeeded} PENDING</Text>
+    <View style={styles.page}>
+      <Text style={styles.pageTitle}>REACTOR & REPAIR</Text>
+
+      <View style={styles.reactorBlock}>
+        <View style={styles.reactorGauge}>
+          <Zap size={32} color={tokens.colors.lcars.peach} />
+          <Text style={styles.reactorValue}>{reactorOutput}%</Text>
         </View>
-      ) : (
-        <Text style={styles.noRepairText}>OPTIMAL</Text>
-      )}
-      <TouchableOpacity style={styles.repairButton}>
-        <Wrench size={16} color={tokens.colors.lcars.peach} />
-        <Text style={styles.repairButtonText}>REPAIR</Text>
-      </TouchableOpacity>
+        <Text style={[styles.reactorTemp, { color: getTempColor() }]}>{reactorTemp}</Text>
+      </View>
+
+      <View style={styles.repairBlock}>
+        <Text style={styles.repairLabel}>REPAIR STATUS</Text>
+        {repairsNeeded > 0 || isRepairing ? (
+          <View style={styles.repairInfo}>
+            <AlertCircle size={18} color={tokens.colors.alert.warning} />
+            <Text style={styles.repairText}>{repairsNeeded} SYSTEMS NEED REPAIR</Text>
+          </View>
+        ) : (
+          <Text style={styles.optimalText}>ALL SYSTEMS OPTIMAL</Text>
+        )}
+        <TouchableOpacity style={styles.repairButton}>
+          <Wrench size={18} color={tokens.colors.lcars.peach} />
+          <Text style={styles.repairButtonText}>REPAIR BAY</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 export function EngLCARSContent() {
+  const pages = [
+    <SystemsPage key="systems" />,
+    <PowerPage key="power" />,
+    <ReactorRepairPage key="reactor-repair" />,
+  ];
+
   return (
-    <>
-      <View style={styles.sectionContainer}>
-        <SystemStatusSection />
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.sectionContainerFlex}>
-        <PowerDistributionSection />
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.sectionContainer}>
-        <ReactorSection />
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.sectionContainer}>
-        <RepairQueueSection />
-      </View>
-    </>
+    <SwipeableLCARSContainer
+      pages={pages}
+      activeColor={tokens.colors.lcars.peach}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    width: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  sectionContainerFlex: {
+  page: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    gap: 12,
+    width: '100%',
   },
-  divider: {
-    width: 1,
-    backgroundColor: tokens.colors.border.default,
-    marginVertical: 8,
-  },
-  section: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  sectionLabel: {
-    fontSize: 9,
+  pageTitle: {
+    fontSize: 11,
     fontWeight: '700',
-    color: tokens.colors.text.muted,
-    letterSpacing: 1,
-    marginBottom: 4,
+    color: tokens.colors.lcars.peach,
+    letterSpacing: 2,
+    marginBottom: 8,
   },
+  // Systems Page
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 4,
-    borderWidth: 1,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 2,
     backgroundColor: tokens.colors.background.tertiary,
   },
   statusText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1,
   },
-  hullText: {
-    fontSize: 9,
-    color: tokens.colors.text.secondary,
-    fontFamily: tokens.typography.fontFamily.mono,
-    marginTop: 4,
+  vitalBars: {
+    width: '80%',
+    gap: 10,
+    marginTop: 8,
   },
-  powerBars: {
-    gap: 8,
-  },
-  powerItem: {
+  vitalItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  powerLabel: {
-    fontSize: 8,
+  vitalLabel: {
+    fontSize: 9,
     fontWeight: '700',
     color: tokens.colors.text.muted,
-    width: 28,
+    width: 50,
     letterSpacing: 1,
   },
-  powerBar: {
-    width: 80,
-    height: 12,
+  vitalBar: {
+    flex: 1,
+    height: 14,
     backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 6,
+    borderRadius: 7,
     overflow: 'hidden',
   },
-  powerFill: {
+  vitalFill: {
     height: '100%',
-    borderRadius: 6,
+    borderRadius: 7,
+  },
+  vitalValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: tokens.typography.fontFamily.mono,
+    width: 40,
+    textAlign: 'right',
+  },
+  // Power Page
+  powerGrid: {
+    flexDirection: 'row',
+    gap: 20,
+  },
+  powerSection: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  powerLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: tokens.colors.text.muted,
+    letterSpacing: 1,
+  },
+  powerBarContainer: {
+    width: 60,
+    alignItems: 'center',
+  },
+  powerBar: {
+    width: 16,
+    height: 60,
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: 8,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  powerFill: {
+    width: '100%',
+    borderRadius: 8,
   },
   powerWeapons: {
     backgroundColor: tokens.colors.semantic.combat,
@@ -239,50 +288,79 @@ const styles = StyleSheet.create({
   powerEngines: {
     backgroundColor: tokens.colors.semantic.navigation,
   },
+  powerValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: tokens.typography.fontFamily.mono,
+  },
+  totalPower: {
+    fontSize: 10,
+    color: tokens.colors.text.muted,
+    fontFamily: tokens.typography.fontFamily.mono,
+    marginTop: 4,
+  },
+  // Reactor & Repair Page
+  reactorBlock: {
+    alignItems: 'center',
+    gap: 6,
+  },
   reactorGauge: {
     alignItems: 'center',
     gap: 4,
   },
   reactorValue: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '700',
     color: tokens.colors.lcars.peach,
     fontFamily: tokens.typography.fontFamily.mono,
   },
   reactorTemp: {
-    fontSize: 9,
-    color: tokens.colors.status.online,
+    fontSize: 10,
     fontWeight: '600',
+    letterSpacing: 1,
+  },
+  repairBlock: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: tokens.colors.border.default,
+    width: '70%',
+  },
+  repairLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: tokens.colors.text.muted,
     letterSpacing: 1,
   },
   repairInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
   repairText: {
-    fontSize: 10,
+    fontSize: 11,
     color: tokens.colors.alert.warning,
     fontWeight: '600',
   },
-  noRepairText: {
-    fontSize: 11,
+  optimalText: {
+    fontSize: 12,
     color: tokens.colors.status.online,
     fontWeight: '600',
   },
   repairButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    padding: 8,
+    gap: 8,
+    padding: 10,
     backgroundColor: tokens.colors.background.tertiary,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: tokens.colors.lcars.peach,
   },
   repairButtonText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: tokens.colors.lcars.peach,
     letterSpacing: 1,

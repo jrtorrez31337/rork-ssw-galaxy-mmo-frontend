@@ -11,10 +11,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * View modes for SectorView2D
  * Each mode projects the 3D sector onto a 2D plane from a different angle
  */
-export type SectorViewMode = 'top-down' | 'side-left' | 'side-right' | 'front' | 'back';
+export type SectorViewMode = 'top-down' | 'bottom' | 'side-left' | 'side-right' | 'front' | 'back';
 
 export const VIEW_MODE_LABELS: Record<SectorViewMode, string> = {
   'top-down': 'Top Down (XY)',
+  'bottom': 'Bottom Up (XY)',
   'side-left': 'Side Left (ZY)',
   'side-right': 'Side Right (ZY)',
   'front': 'Front (XZ)',
