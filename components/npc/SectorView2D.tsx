@@ -26,7 +26,6 @@ import {
 } from '@/components/sector/ProcgenMarkers';
 import { TerritoryBorder } from '@/components/hud/TerritoryBorder';
 import { ThreatIndicator } from '@/components/hud/ThreatIndicator';
-import { ViewModeSelector } from '@/components/hud/ViewModeSelector';
 import type { Station } from '@/types/movement';
 import type { SectorShip } from '@/api/sectorEntities';
 
@@ -546,8 +545,7 @@ export default function SectorView2D({
           </Animated.View>
         </GestureDetector>
 
-          {/* View Mode Selector */}
-          <ViewModeSelector />
+          {/* View Mode Selector moved to NAV LCARS bar */}
 
           {/* Threat Indicator Overlay */}
           <ThreatIndicator
@@ -557,78 +555,6 @@ export default function SectorView2D({
           />
         </View>
 
-      {/* Legend */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
-          <Text style={styles.legendText}>You</Text>
-        </View>
-        {dbStations.length > 0 && (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendSquare, { backgroundColor: '#10b981' }]} />
-            <Text style={styles.legendText}>Station</Text>
-          </View>
-        )}
-        {otherShips.length > 0 && (
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDiamond, { backgroundColor: '#8b5cf6' }]} />
-            <Text style={styles.legendText}>Player</Text>
-          </View>
-        )}
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
-          <Text style={styles.legendText}>Pirate</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
-          <Text style={styles.legendText}>Trader</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
-          <Text style={styles.legendText}>Patrol</Text>
-        </View>
-        {showProcgen && sector && (
-          <>
-            {sector.star && (
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#FFFF66' }]} />
-                <Text style={styles.legendText}>Star</Text>
-              </View>
-            )}
-            {sector.asteroidFields && sector.asteroidFields.length > 0 && (
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#8B7355' }]} />
-                <Text style={styles.legendText}>Asteroids</Text>
-              </View>
-            )}
-          </>
-        )}
-        {/* Territory Control Legend */}
-        {controlData?.controllingFaction && (
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                {
-                  backgroundColor: controlData.controllingFaction.color,
-                  borderWidth: controlData.isContested ? 1 : 0,
-                  borderColor: controlData.contestingFaction?.color || 'transparent',
-                },
-              ]}
-            />
-            <Text style={styles.legendText}>
-              {controlData.isContested ? 'Contested' : controlData.controllingFaction.name.split(' ')[0]}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Info */}
-      <View style={styles.info}>
-        <Text style={styles.infoText}>
-          Pinch to zoom • Double-tap to reset • Tap NPC to select
-        </Text>
-      </View>
     </View>
   );
 }
@@ -661,45 +587,5 @@ const styles = StyleSheet.create({
   },
   svgContainer: {
     backgroundColor: Colors.background,
-  },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    paddingHorizontal: 12,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendSquare: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
-  },
-  legendDiamond: {
-    width: 10,
-    height: 10,
-    transform: [{ rotate: '45deg' }],
-  },
-  legendText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-  },
-  info: {
-    paddingHorizontal: 16,
-  },
-  infoText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
 });

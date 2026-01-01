@@ -4,6 +4,12 @@ import { Crosshair, Shield, Zap, AlertTriangle } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useCombatStore } from '@/stores/combatStore';
 import { useCockpitStore } from '@/stores/cockpitStore';
+import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { shipApi } from '@/api/ships';
+import { sectorEntitiesApi } from '@/api/sectorEntities';
+import { useNPCStore } from '@/stores/npcStore';
+import { LongRangeScanner } from './LongRangeScanner';
 
 /**
  * TacLCARSContent - Tactical controls for the unified LCARS bar
@@ -135,9 +141,53 @@ function CombatActionsSection() {
   );
 }
 
+function ScannerSection() {
+  const { profileId } = useAuth();
+  const npcs = useNPCStore((s) => s.npcs);
+
+  // Get player's ship data
+  const { data: ships } = useQuery({
+    queryKey: ['ships', profileId],
+    queryFn: () => shipApi.getByOwner(profileId!),
+    enabled: !!profileId,
+    staleTime: 5000,
+  });
+
+  const currentShip = ships?.[0] || null;
+  const sectorId = currentShip?.location_sector || undefined;
+  const playerPosition: [number, number, number] | undefined = currentShip
+    ? [currentShip.position_x, currentShip.position_y, currentShip.position_z]
+    : undefined;
+
+  // Get sector entities (stations and other ships)
+  const { data: sectorData } = useQuery({
+    queryKey: ['sector-entities', sectorId],
+    queryFn: () => sectorEntitiesApi.getSectorEntities(sectorId!),
+    enabled: !!sectorId,
+    staleTime: 10000,
+  });
+
+  return (
+    <LongRangeScanner
+      sectorId={sectorId}
+      playerPosition={playerPosition}
+      npcs={npcs}
+      dbStations={sectorData?.stations || []}
+      otherShips={sectorData?.ships || []}
+      currentShipId={currentShip?.id}
+    />
+  );
+}
+
 export function TacLCARSContent() {
   return (
     <>
+      <View style={styles.sectionContainerScanner}>
+        <ScannerSection />
+      </View>
+
+      <View style={styles.divider} />
+
       <View style={styles.sectionContainer}>
         <AlertStatusSection />
       </View>
@@ -164,6 +214,12 @@ export function TacLCARSContent() {
 }
 
 const styles = StyleSheet.create({
+  sectionContainerScanner: {
+    width: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
   sectionContainer: {
     width: 80,
     alignItems: 'center',

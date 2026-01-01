@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
 import { npcApi } from '@/api/npc';
-import { combatApi } from '@/api/combat';
 import { movementApi } from '@/api/movement';
 import { sectorEntitiesApi, type SectorShip } from '@/api/sectorEntities';
 import { characterApi } from '@/api/characters';
@@ -20,7 +19,6 @@ import { useCombatStore } from '@/stores/combatStore';
 import { useTravelStore } from '@/stores/travelStore';
 import { useProcgenStore, selectCurrentSectorMetadata } from '@/stores/procgenStore';
 import { SectorView } from '@/components/sector';
-import NPCList from '@/components/npc/NPCList';
 import CombatHUD from '@/components/combat/CombatHUD';
 import CombatResults from '@/components/combat/CombatResults';
 import LootNotification from '@/components/loot/LootNotification';
@@ -87,8 +85,8 @@ export default function MapTab() {
     );
   }, [shipsData?.ships, currentShip?.id]);
 
-  const { npcs, selectedNPC, setNPCs, setSelectedNPC, setLoading, setError } = useNPCStore();
-  const { isInCombat, setCombatInstance } = useCombatStore();
+  const { npcs, selectedNPC, setNPCs, setLoading, setError } = useNPCStore();
+  const { isInCombat } = useCombatStore();
   const { isInTransit } = useTravelStore();
   const { enterSector, leaveSector, fetchSectorMetadata, getDisplayName, getFactionInfo } = useProcgenStore();
   const currentMetadata = useProcgenStore(selectCurrentSectorMetadata);
@@ -173,52 +171,6 @@ export default function MapTab() {
     }
   };
 
-  const handleSelectNPC = (npcId: string) => {
-    const npc = npcs.find((n) => n.entity_id === npcId);
-    if (npc) {
-      setSelectedNPC(selectedNPC?.entity_id === npcId ? null : npc);
-    }
-  };
-
-  const handleInitiateCombat = async (npcId: string) => {
-    if (!profileId || !currentShip) {
-      Alert.alert('Error', 'User or ship not found');
-      return;
-    }
-
-    if (isInCombat) {
-      Alert.alert('Already in Combat', 'You are already engaged in combat');
-      return;
-    }
-
-    Alert.alert(
-      'Initiate Combat',
-      'Are you sure you want to engage this ship in combat?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Engage',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await combatApi.initiateCombat({
-                player_id: profileId,
-                ship_id: currentShip.id,
-                target_entity_id: npcId,
-              });
-
-              setCombatInstance(response.combat);
-              Alert.alert('Combat Started', response.message);
-            } catch (error: any) {
-              console.error('Failed to initiate combat:', error);
-              Alert.alert('Combat Failed', error.message || 'Failed to initiate combat');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {currentShip?.docked_at ? (
@@ -273,9 +225,9 @@ export default function MapTab() {
             </Button>
           </View>
 
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
             {/* Sector View (2D or 3D based on settings) */}
-            <View style={styles.section}>
+            <View style={styles.sectorViewContainer}>
               <SectorView
                 npcs={npcs}
                 playerPosition={playerPosition}
@@ -287,17 +239,7 @@ export default function MapTab() {
                 currentShipId={currentShip?.id}
               />
             </View>
-
-            {/* NPC List */}
-            <View style={styles.section}>
-              <View style={styles.listContainer}>
-                <NPCList
-                  onSelectNPC={handleSelectNPC}
-                  onInitiateCombat={handleInitiateCombat}
-                />
-              </View>
-            </View>
-          </ScrollView>
+          </View>
 
           {/* Combat HUD Overlay */}
           {isInCombat && <CombatHUD playerId={profileId || ''} />}
@@ -410,13 +352,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  section: {
-    padding: tokens.spacing[6],
-    gap: tokens.spacing[3],
-  },
-  listContainer: {
-    height: 400,
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
+  sectorViewContainer: {
+    flex: 1,
+    padding: tokens.spacing[4],
   },
 });

@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Navigation, Map, Compass, Rocket } from 'lucide-react-native';
+import { Navigation, Map, Compass, Rocket, Grid3X3, Layers } from 'lucide-react-native';
 import { tokens } from '@/ui/theme';
 import { useCockpitStore } from '@/stores/cockpitStore';
 import { useTravelStore } from '@/stores/travelStore';
+import { useSettingsStore, SectorViewMode } from '@/stores/settingsStore';
+import { getAxisLabels } from '@/lib/sectorProjection';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { shipApi } from '@/api/ships';
@@ -130,6 +132,72 @@ function FlightModeSection() {
   );
 }
 
+const VIEW_MODES: SectorViewMode[] = ['top-down', 'side-left', 'side-right', 'front', 'back'];
+const VIEW_MODE_SHORT_LABELS: Record<SectorViewMode, string> = {
+  'top-down': 'TOP',
+  'side-left': 'L',
+  'side-right': 'R',
+  'front': 'F',
+  'back': 'B',
+};
+
+function ViewControlsSection() {
+  const {
+    sectorViewMode,
+    sectorGridEnabled,
+    sectorDepthCuesEnabled,
+    setSectorViewMode,
+    setSectorGridEnabled,
+    setSectorDepthCuesEnabled,
+  } = useSettingsStore();
+
+  const axisLabels = getAxisLabels(sectorViewMode);
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>VIEW ANGLE</Text>
+      <View style={styles.viewModeRow}>
+        {VIEW_MODES.map((mode) => (
+          <TouchableOpacity
+            key={mode}
+            style={[
+              styles.viewModeButton,
+              sectorViewMode === mode && styles.viewModeButtonActive,
+            ]}
+            onPress={() => setSectorViewMode(mode)}
+          >
+            <Text
+              style={[
+                styles.viewModeButtonText,
+                sectorViewMode === mode && styles.viewModeButtonTextActive,
+              ]}
+            >
+              {VIEW_MODE_SHORT_LABELS[mode]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={styles.axisInfo}>
+        {axisLabels.horizontal}/{axisLabels.vertical} • D:{axisLabels.depth}
+      </Text>
+      <View style={styles.toggleRow}>
+        <TouchableOpacity
+          style={[styles.toggleButton, sectorGridEnabled && styles.toggleButtonActive]}
+          onPress={() => setSectorGridEnabled(!sectorGridEnabled)}
+        >
+          <Grid3X3 size={14} color={sectorGridEnabled ? tokens.colors.semantic.navigation : tokens.colors.text.muted} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleButton, sectorDepthCuesEnabled && styles.toggleButtonActive]}
+          onPress={() => setSectorDepthCuesEnabled(!sectorDepthCuesEnabled)}
+        >
+          <Layers size={14} color={sectorDepthCuesEnabled ? tokens.colors.semantic.navigation : tokens.colors.text.muted} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 export function NavLCARSContent() {
   return (
     <>
@@ -141,6 +209,12 @@ export function NavLCARSContent() {
 
       <View style={styles.sectionContainerWide}>
         <TravelProgressSection />
+      </View>
+
+      <View style={styles.divider} />
+
+      <View style={styles.sectionContainerView}>
+        <ViewControlsSection />
       </View>
 
       <View style={styles.divider} />
@@ -167,6 +241,12 @@ const styles = StyleSheet.create({
   },
   sectionContainerWide: {
     width: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  sectionContainerView: {
+    width: 140,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
@@ -268,5 +348,56 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: tokens.colors.lcars.sky,
     letterSpacing: 1,
+  },
+  viewModeRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  viewModeButton: {
+    width: 24,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  viewModeButtonActive: {
+    backgroundColor: tokens.colors.semantic.navigation + '30',
+    borderColor: tokens.colors.semantic.navigation,
+  },
+  viewModeButtonText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: tokens.colors.text.muted,
+  },
+  viewModeButtonTextActive: {
+    color: tokens.colors.semantic.navigation,
+  },
+  axisInfo: {
+    fontSize: 8,
+    color: tokens.colors.text.muted,
+    fontFamily: tokens.typography.fontFamily.mono,
+    marginTop: 2,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  toggleButton: {
+    width: 28,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: tokens.colors.background.tertiary,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  toggleButtonActive: {
+    backgroundColor: tokens.colors.semantic.navigation + '20',
+    borderColor: tokens.colors.semantic.navigation + '50',
   },
 });
