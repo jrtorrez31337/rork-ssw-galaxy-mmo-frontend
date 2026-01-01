@@ -1,4 +1,4 @@
-export { FlightLCARSContent } from './FlightLCARSContent';
+export { FleetLCARSContent } from './FleetLCARSContent';
 export { NavLCARSContent } from './NavLCARSContent';
 export { OpsLCARSContent } from './OpsLCARSContent';
 export { TacLCARSContent } from './TacLCARSContent';

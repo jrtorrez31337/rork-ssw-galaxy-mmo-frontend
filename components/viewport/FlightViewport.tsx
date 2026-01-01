@@ -6,8 +6,8 @@ import { ShipVisualization3D } from '@/components/flight/ShipVisualization3D';
 /**
  * FlightViewport - Dedicated flight mode viewport
  *
- * Shows the 3D ship visualization. Flight controls are now
- * handled by FlightLCARSContent in the UnifiedLCARSBar.
+ * Shows the 3D ship visualization for manual flight control.
+ * Access via NAV LCARS bar when flight mode is available.
  */
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
